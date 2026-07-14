@@ -1,0 +1,52 @@
+server {
+    listen 443 ssl http2;
+    server_name chatsupport.fskindia.com;
+
+    # SSL Configuration - managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/chatsupport.fskindia.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/chatsupport.fskindia.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Logging
+    access_log /var/log/nginx/chatsupport.access.log;
+    error_log /var/log/nginx/chatsupport.error.log;
+
+    # Large client body (for file uploads)
+    client_max_body_size 100M;
+
+    location / {
+        proxy_pass http://127.0.0.1:8003;
+
+        # WebSocket and proxy headers
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Timeout settings
+        proxy_connect_timeout 320s;
+        proxy_send_timeout 320s;
+        proxy_read_timeout 320s;
+        send_timeout 320s;
+    }
+
+    # Optional health check route
+    location = /health {
+        return 200 'healthy';
+        add_header Content-Type text/plain;
+    }
+}
+
+# HTTP to HTTPS Redirect
+server {
+    listen 80;
+    server_name chatsupport.fskindia.com;
+
+    # Redirect all HTTP to HTTPS
+    return 301 https://$host$request_uri;
+}

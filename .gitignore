@@ -1,0 +1,31 @@
+# Secrets and certificates
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+credentials*
+secrets*
+
+# Runtime data
+*.log
+*.pid
+*.pdf
+*.zip
+*.tar
+*.gz
+venv/
+.venv/
+env/
+__pycache__/
+.cache/
+node_modules/
+
+# Local/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.bak-*
