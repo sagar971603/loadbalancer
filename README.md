@@ -1,16 +1,18 @@
 # FSK India load balancer and Automation V2 deployment
 
-This repository is the configuration-only backup and deployment kit for:
+This repository is the source-and-configuration backup and deployment kit for:
 
 - The production NGINX load balancer.
+- The Automation V2 Python application source.
 - Automation V2 backend servers.
 - Adding or removing a backend safely while preserving `ip_hash` sticky sessions.
 
-It intentionally does **not** contain application data, `.env` values, passwords, API keys, TLS private keys, certificates, logs, PDFs, browser downloads, caches, or virtual environments.
+It intentionally does **not** contain application data, `.env` values, passwords, API keys, TLS private keys, certificates, logs, PDFs, browser downloads, caches, or virtual environments. Example identities and passwords in the source backup were sanitized.
 
 ## What is included
 
 ```text
+app/automation-v2/       Python application source and requirements
 backup/
   load-balancer/nginx/   Current NGINX configuration snapshot
   backend/nginx/         Backend reverse-proxy configuration
@@ -19,6 +21,7 @@ backup/
 scripts/
   backup-current.sh      Refresh configuration-only backups
   deploy-backend.sh      Build an Automation V2 backend
+  setup-backend.sh       Guided first-time backend setup
   add-backend.sh         Safely add one backend to production
   restore-load-balancer.sh
                          Restore NGINX on a replacement load balancer
@@ -47,7 +50,7 @@ FastAPI on 127.0.0.1:8009
 
 ## Fastest safe workflows
 
-### A. Add a healthy backend to production — one command
+### A. Add a healthy backend to production - one command
 
 Run on the load balancer after confirming `http://NEW_IP/health` works:
 
@@ -71,30 +74,22 @@ Example:
 sudo ./scripts/add-backend.sh 147.93.171.254 80
 ```
 
-### B. Deploy a new Automation V2 backend — three steps
+### B. Deploy a new Automation V2 backend - two steps
 
-1. Clone this infrastructure repository:
+1. Clone this repository on the new Ubuntu server:
 
    ```bash
    git clone https://github.com/sagar971603/loadbalancer.git
    cd loadbalancer
    ```
 
-2. Store the application environment securely on the new server:
+2. Run the guided setup:
 
    ```bash
-   install -m 600 /secure/location/automation-v2.env /root/automation-v2.env
+   sudo ./scripts/setup-backend.sh
    ```
 
-3. Deploy using the separate Automation V2 application repository:
-
-   ```bash
-   sudo APP_REPO_URL="https://github.com/OWNER/AUTOMATION-V2.git" \
-        ENV_FILE="/root/automation-v2.env" \
-        ./scripts/deploy-backend.sh
-   ```
-
-The application repository URL is deliberately not hard-coded here. This repository backs up infrastructure, not private application source or data.
+The setup asks privately for `CLIENT_KEY` and `CAPTCHA_API_KEY`; typed values are hidden. It installs the bundled application, Python packages, Playwright, NGINX, and the system service, then performs a health check. It does not change the load balancer.
 
 After deployment, test from the load balancer:
 
@@ -104,7 +99,17 @@ curl -fsS http://NEW_BACKEND_IP/health
 
 Then add it with workflow A.
 
-### C. Restore a replacement load balancer — three steps
+To update an existing backend after a future Git change:
+
+```bash
+cd loadbalancer
+git pull --ff-only
+sudo ./scripts/deploy-backend.sh
+```
+
+The existing protected `.env` file is reused.
+
+### C. Restore a replacement load balancer - three steps
 
 1. Point DNS or prepare the replacement Ubuntu server, then clone this repository.
 2. Restore or reissue TLS certificates securely outside Git.
@@ -181,7 +186,7 @@ grep 'GET /ws' /var/log/nginx/access.log | tail
 - Add a backend only after its direct health check succeeds from the load balancer.
 - Remove a backend from the upstream before rebuilding or rebooting it.
 - Rotate temporary SSH credentials after deployment.
-- Do not use real PAN/password credentials until credential logging is removed from the application.
+- Keep real PAN/password credentials out of Git and deployment logs.
 
 ## Detailed guides
 

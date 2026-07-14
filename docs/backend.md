@@ -7,13 +7,11 @@ This guide creates a new Ubuntu 24.04 backend without changing any existing prod
 - A clean Ubuntu 24.04 x86_64 server.
 - Root or passwordless sudo access.
 - Network access to GitHub and Ubuntu package repositories.
-- The private Automation V2 application repository URL.
-- A secure environment file containing `CLIENT_KEY` and `CAPTCHA_API_KEY`.
-- This infrastructure repository.
+- The `CLIENT_KEY` and `CAPTCHA_API_KEY` values supplied privately by the application owner.
 
-Do not store the real environment file in Git.
+The Python source is bundled in `app/automation-v2`. Application data and secrets are deliberately excluded. Do not store the real environment file in Git.
 
-## Recommended three-step deployment
+## Recommended two-step deployment
 
 ### 1. Clone this repository
 
@@ -22,48 +20,25 @@ git clone https://github.com/sagar971603/loadbalancer.git
 cd loadbalancer
 ```
 
-### 2. Place the environment file securely
-
-Create it from the safe key-only example:
+### 2. Run the guided setup
 
 ```bash
-cp backup/backend/app-manifests/.env.example /root/automation-v2.env
-chmod 600 /root/automation-v2.env
-nano /root/automation-v2.env
+sudo ./scripts/setup-backend.sh
 ```
 
-Fill the values directly on the server. Do not paste them into Git, tickets, or deployment logs.
+Enter `CLIENT_KEY` and `CAPTCHA_API_KEY` when asked. Input is hidden, written to a protected `.env` file, and never stored in this Git checkout. The script installs the bundled application, system packages, Python packages, Playwright browsers, systemd, and NGINX; it validates NGINX and finishes with a health check. It does not add the server to the production load balancer.
 
-### 3. Run the deployment
+## Update an existing backend from Git
+
+First remove the backend from production traffic. Then run on that backend:
 
 ```bash
-sudo APP_REPO_URL="https://github.com/OWNER/AUTOMATION-V2.git" \
-     ENV_FILE="/root/automation-v2.env" \
-     ./scripts/deploy-backend.sh
+cd loadbalancer
+git pull --ff-only
+sudo ./scripts/deploy-backend.sh
 ```
 
-The script installs base packages, clones the application, recreates the virtual environment, installs both requirements files, installs Playwright browsers and Linux libraries, installs systemd/NGINX configuration, validates NGINX, starts both services, and checks `/health`.
-
-For a private application repository, use an SSH deploy key or a short-lived GitHub token configured outside this repository.
-
-## Existing application directory
-
-If application code already exists at `/root/tools/automation-v2`:
-
-```bash
-sudo ENV_FILE="/root/automation-v2.env" ./scripts/deploy-backend.sh
-```
-
-To use a different directory:
-
-```bash
-sudo APP_DIR="/opt/automation-v2" \
-     APP_REPO_URL="https://github.com/OWNER/AUTOMATION-V2.git" \
-     ENV_FILE="/root/automation-v2.env" \
-     ./scripts/deploy-backend.sh
-```
-
-If `APP_DIR` changes, update the backed-up systemd file before deployment because its paths currently use `/root/tools/automation-v2`.
+The bundled source is refreshed while the existing protected `.env` file is retained. The service is restarted by the deployment script and checked locally. Add the backend to the load balancer again only after validation.
 
 ## Manual validation
 
@@ -100,7 +75,7 @@ grep -RIn --include='*.py' \
   /root/tools/automation-v2
 ```
 
-Remove or redact credential logging, including any `print(pan, password)` statement. Use real credentials only through the production HTTPS/WSS load-balancer endpoint.
+The backed-up copy has its known credential-printing statement removed and its sample identities sanitized. The command above is an additional check before real-user testing. Use real credentials only through the production HTTPS/WSS load-balancer endpoint.
 
 ## Add the server to production
 
@@ -132,21 +107,6 @@ systemctl is-active automation-v2 nginx
 curl -fsS http://127.0.0.1/health
 journalctl -u automation-v2 -b -n 30 --no-pager
 ```
-
-## Updating an existing backend
-
-Remove it from the load-balancer upstream first, validate and reload NGINX, then update the backend application from its own repository:
-
-```bash
-cd /root/tools/automation-v2
-git pull --ff-only
-venv/bin/python -m pip install -r requirements.txt -r api/requirements.txt
-venv/bin/python -m playwright install --with-deps
-systemctl restart automation-v2
-curl -fsS http://127.0.0.1/health
-```
-
-Add it back only after the direct health and browser tests succeed.
 
 ## Backend rollback
 

@@ -5,17 +5,27 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 APP_DIR="${APP_DIR:-/root/tools/automation-v2}"
 APP_REPO_URL="${APP_REPO_URL:-}"
 ENV_FILE="${ENV_FILE:-}"
+BUNDLED_APP="$ROOT/app/automation-v2"
 
 [[ $EUID -eq 0 ]] || { echo "Run with sudo." >&2; exit 1; }
+[[ $APP_DIR == /root/tools/automation-v2 ]] || { echo "APP_DIR must remain /root/tools/automation-v2 because the service uses that path." >&2; exit 1; }
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y git openssh-client nginx python3 python3-venv python3-pip curl ca-certificates
 install -d -m 0755 "$(dirname "$APP_DIR")"
 
-if [[ ! -d $APP_DIR ]]; then
-  [[ -n $APP_REPO_URL ]] || { echo "Set APP_REPO_URL or place the application at $APP_DIR." >&2; exit 1; }
-  git clone "$APP_REPO_URL" "$APP_DIR"
+if [[ -n $APP_REPO_URL ]]; then
+  if [[ ! -d $APP_DIR/.git ]]; then
+    [[ ! -e $APP_DIR ]] || { echo "$APP_DIR exists but is not a Git checkout." >&2; exit 1; }
+    git clone "$APP_REPO_URL" "$APP_DIR"
+  else
+    git -C "$APP_DIR" pull --ff-only
+  fi
+else
+  [[ -f $BUNDLED_APP/api/main.py ]] || { echo "Bundled application source is missing." >&2; exit 1; }
+  install -d -m 0755 "$APP_DIR"
+  cp -a "$BUNDLED_APP/." "$APP_DIR/"
 fi
 
 [[ -f $APP_DIR/requirements.txt && -f $APP_DIR/api/requirements.txt ]] || { echo "Application requirement files are missing." >&2; exit 1; }
@@ -41,6 +51,9 @@ ln -sfn /etc/nginx/sites-available/automation-v2 /etc/nginx/sites-enabled/automa
 
 systemctl daemon-reload
 nginx -t
-systemctl enable --now nginx automation-v2
+systemctl enable --now nginx
+systemctl reload nginx
+systemctl enable automation-v2
+systemctl restart automation-v2
 curl -fsS --retry 10 --retry-delay 2 --retry-connrefused http://127.0.0.1/health
 echo "Backend deployed. Add it to the load balancer only after testing from the load-balancer host."

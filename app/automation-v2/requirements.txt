@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+gunicorn
+requests
+websockets
+python-dotenv

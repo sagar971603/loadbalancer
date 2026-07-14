@@ -13,6 +13,10 @@ secrets*
 *.log
 *.pid
 *.pdf
+*.png
+*.jpg
+*.jpeg
+*.pkl
 *.zip
 *.tar
 *.gz
@@ -22,6 +26,10 @@ env/
 __pycache__/
 .cache/
 node_modules/
+downloads/
+sessions/
+cookies/
+playwright-report/
 
 # Local/editor files
 .DS_Store
