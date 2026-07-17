@@ -4,7 +4,7 @@ set -Eeuo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 for script in "$ROOT"/scripts/*.sh; do bash -n "$script"; done
 
-if find "$ROOT" -type f \( -name '.env' -o -name '*.pem' -o -name '*.key' -o -name '*.log' -o -name '*.pdf' \) -print -quit | grep -q .; then
+if find "$ROOT" -type f \( -name '.env' -o -name '*.pem' -o -name '*.key' -o -name '*.log' -o -name '*.pdf' -o -name '*.htpasswd' \) -print -quit | grep -q .; then
   echo "Forbidden secret/data file found." >&2
   exit 1
 fi
@@ -19,6 +19,9 @@ grep -q '127.0.0.1:8010' "$ROOT/backup/backend/nginx/registration"
 [[ -f $ROOT/app/eportal-hybrid/regmainhybrid.py ]]
 [[ -f $ROOT/app/eportal-hybrid/registration_core.py ]]
 [[ -f $ROOT/backup/backend/systemd/registration.service ]]
+[[ -f $ROOT/dashboard/server.py ]]
+[[ -f $ROOT/dashboard/lb-dashboard-control ]]
+[[ -f $ROOT/scripts/deploy-dashboard.sh ]]
 
 if grep -RInE --include='*.py' --include='*.md' 'print\(pan, password\)' "$ROOT/app"; then
   echo "Credential-printing code found." >&2

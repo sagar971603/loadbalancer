@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FSK Traffic Control</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">Production infrastructure</p>
+        <h1>Traffic Control</h1>
+        <p class="subtitle">Backend health, application sessions and safe route controls.</p>
+      </div>
+      <button id="refresh" class="secondary">Refresh now</button>
+    </header>
+
+    <section id="summary" class="summary" aria-label="System summary"></section>
+
+    <section class="toolbar">
+      <div><span id="overall" class="status-dot"></span><strong id="overall-text">Checking systems…</strong></div>
+      <p id="checked">Waiting for first update</p>
+    </section>
+
+    <section id="machines" class="machines" aria-live="polite"></section>
+
+    <aside class="notice">
+      <strong>Safe controls</strong>
+      <p>Disable removes an incoming load-balancer route after creating a backup and validating NGINX. It does not turn off a dual-IP machine’s outgoing proxy. Live connections are counted at this load balancer; session values sample one application worker and are not machine-wide totals.</p>
+    </aside>
+  </main>
+
+  <dialog id="confirm">
+    <form method="dialog">
+      <p class="eyebrow">Confirm production change</p>
+      <h2 id="confirm-title">Change route?</h2>
+      <p id="confirm-text"></p>
+      <div class="dialog-actions">
+        <button value="cancel" class="secondary">Cancel</button>
+        <button id="confirm-action" value="confirm">Confirm</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+SERVICE=${1:-}
+IP=${2:-}
+ACTION=${3:-}
+
+case "$SERVICE" in
+  newtool) CONFIG=/etc/nginx/sites-available/automation_v2; PORT=8000; [[ $IP == 147.93.171.254 ]] && PORT=80 ;;
+  registration) CONFIG=/etc/nginx/sites-available/regpan4.fskindia.com; PORT=8002 ;;
+  *) echo "Invalid service." >&2; exit 2 ;;
+esac
+
+case "$IP" in
+  217.217.249.145|147.93.168.214|217.216.78.35|147.93.168.221|217.216.78.96|147.93.171.116|147.93.171.254) ;;
+  *) echo "Invalid backend IP." >&2; exit 2 ;;
+esac
+[[ $ACTION == enable || $ACTION == disable ]] || { echo "Invalid action." >&2; exit 2; }
+[[ -f $CONFIG ]] || { echo "NGINX configuration is missing." >&2; exit 2; }
+
+TARGET="$IP:$PORT"
+MATCHES=$(awk -v target="$TARGET" '$1 == "server" { entry=$2; sub(/;$/, "", entry); if (entry == target) count++ } END { print count+0 }' "$CONFIG")
+[[ $MATCHES -eq 1 ]] || { echo "Expected one upstream entry for $TARGET; found $MATCHES." >&2; exit 3; }
+
+ENABLED=$(grep -E '^[[:space:]]*server[[:space:]]+[^;]+;' "$CONFIG" | grep -Evc '[[:space:]]down;' || true)
+TARGET_LINE=$(awk -v target="$TARGET" '$1 == "server" { entry=$2; sub(/;$/, "", entry); if (entry == target) print }' "$CONFIG")
+CURRENT=enable
+grep -qE '[[:space:]]down;' <<< "$TARGET_LINE" && CURRENT=disable
+[[ $CURRENT != "$ACTION" ]] || { echo "$SERVICE $TARGET is already ${ACTION}d."; exit 0; }
+[[ $ACTION != disable || $ENABLED -gt 1 ]] || { echo "Refusing to disable the last enabled backend." >&2; exit 4; }
+
+STAMP=$(date +%Y%m%d-%H%M%S)
+BACKUP_DIR=/var/backups/lb-dashboard
+BACKUP="$BACKUP_DIR/$(basename "$CONFIG").$STAMP"
+TMP=$(mktemp)
+install -d -m 0700 "$BACKUP_DIR"
+cp -a "$CONFIG" "$BACKUP"
+trap 'rm -f "$TMP"' EXIT
+
+awk -v target="$TARGET" -v action="$ACTION" '
+  $1 == "server" { entry=$2; sub(/;$/, "", entry) }
+  $1 == "server" && entry == target {
+    if (action == "disable" && $0 !~ /[[:space:]]down;/) sub(/;[[:space:]]*$/, " down;")
+    if (action == "enable") sub(/[[:space:]]down;[[:space:]]*$/, ";")
+  }
+  { print }
+' "$CONFIG" > "$TMP"
+install -m 0644 "$TMP" "$CONFIG"
+
+rollback() {
+  cp -a "$BACKUP" "$CONFIG"
+  nginx -t >/dev/null 2>&1 && systemctl reload nginx || true
+}
+if ! nginx -t; then rollback; echo "Validation failed; original configuration restored." >&2; exit 5; fi
+if ! systemctl reload nginx || ! systemctl is-active --quiet nginx; then rollback; echo "Reload failed; original configuration restored." >&2; exit 6; fi
+
+logger -t lb-dashboard "${SUDO_USER:-root} changed $SERVICE $TARGET to $ACTION; backup=$BACKUP"
+echo "$SERVICE $TARGET ${ACTION}d. Backup: $BACKUP"

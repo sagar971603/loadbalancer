@@ -1,0 +1,20 @@
+[Unit]
+Description=FSK load-balancer dashboard
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lb-dashboard
+Group=lb-dashboard
+WorkingDirectory=/opt/lb-dashboard
+ExecStart=/usr/bin/python3 /opt/lb-dashboard/server.py
+Restart=on-failure
+RestartSec=3
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/nginx/sites-available /var/backups/lb-dashboard /var/log/nginx
+
+[Install]
+WantedBy=multi-user.target

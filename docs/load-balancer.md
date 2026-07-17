@@ -1,5 +1,25 @@
 # Load-balancer deployment and operations
 
+## Protected traffic dashboard
+
+The production dashboard is available at:
+
+```text
+https://newtool2.fskindia.com/server-control/
+```
+
+It groups dual-IP aliases by physical machine and displays both newtool and registration health, latency, live load-balancer connections, sampled application sessions, WebSockets, registration errors, and upstream route state.
+
+Use Enable/Disable only for incoming load-balancer routing. These controls do not switch off an outgoing egress proxy on a dual-IP backend. Every change is allow-listed, backed up under `/var/backups/lb-dashboard`, validated with `nginx -t`, gracefully reloaded, and rolled back on failure. The final enabled backend cannot be disabled.
+
+Install or update:
+
+```bash
+sudo ./scripts/deploy-dashboard.sh
+```
+
+The password file `/etc/nginx/lb-dashboard.htpasswd` and all real credentials remain outside Git. Restore points are stored under `/root/restore-points/lb-dashboard-*`.
+
 This repository stores NGINX configuration only. It excludes TLS certificates/private keys, logs, databases, runtime data, and applications that happen to run locally on the load-balancer host.
 
 ## Current Automation V2 design

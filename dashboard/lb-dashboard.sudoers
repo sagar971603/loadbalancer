@@ -1,0 +1,1 @@
+lb-dashboard ALL=(root) NOPASSWD: /usr/local/sbin/lb-dashboard-control newtool *, /usr/local/sbin/lb-dashboard-control registration *

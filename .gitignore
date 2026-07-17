@@ -8,6 +8,7 @@
 *.pfx
 credentials*
 secrets*
+*.htpasswd
 
 # Runtime data
 *.log

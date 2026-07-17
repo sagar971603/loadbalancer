@@ -28,6 +28,8 @@ scripts/
   restore-load-balancer.sh
                          Restore NGINX on a replacement load balancer
   check.sh               Syntax and safety checks
+  deploy-dashboard.sh    Install/update the protected traffic dashboard
+dashboard/               Dashboard UI, status service and safe route helper
 docs/
   backend.md             Complete backend deployment guide
   load-balancer.md       Complete load-balancer guide and rollback
@@ -53,6 +55,18 @@ Registration uses the same sticky-session design through backend port `8002`, wh
 `ip_hash` must remain enabled. Automation V2 keeps sessions and WebSocket state in memory, so a client must remain on the same backend.
 
 ## Fastest safe workflows
+
+### Production traffic dashboard
+
+Open [https://newtool2.fskindia.com/server-control/](https://newtool2.fskindia.com/server-control/) with the separately stored dashboard login. It shows all 14 application routes, response time, live load-balancer connections, sampled application sessions, WebSockets, errors, and enabled/disabled state.
+
+Route controls create a timestamped backup, refuse to disable the last backend, preserve `ip_hash`, validate NGINX, and restore the original automatically if validation or reload fails. Disabling an incoming route does not disable a dual-IP backend's outgoing proxy.
+
+Deploy or update it on the load balancer with:
+
+```bash
+sudo ./scripts/deploy-dashboard.sh
+```
 
 ### A. Add a healthy backend to production - one command
 
