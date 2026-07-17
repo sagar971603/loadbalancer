@@ -48,6 +48,7 @@ websocket_connections: Dict[str, Dict[str, Any]] = {}
 connection_attempts: Dict[str, List[datetime]] = {}
 MAX_CONNECTIONS_PER_IP = 1000
 RATE_LIMIT_WINDOW = timedelta(minutes=5)
+WEBSOCKET_IDLE_TIMEOUT_SECONDS = int(os.getenv("WEBSOCKET_IDLE_TIMEOUT_SECONDS", "300"))
 
 # Logging Configuration
 logging.basicConfig(
@@ -320,6 +321,19 @@ class ConnectionManager:
             logger.info(f"WebSocket disconnected: {connection_id[:8]}... from {conn_data['client_ip']}")
             del self.active_connections[connection_id]
 
+    def cleanup_sessions(self, connection_id: str):
+        """Remove session state owned by an idle WebSocket."""
+        conn_data = self.active_connections.get(connection_id, {})
+        if not conn_data:
+            return
+        session = active_sessions.pop(conn_data.get('session_id'), None)
+        if session:
+            stop_event = getattr(session.get('client'), '_stop_extender_event', None)
+            if stop_event:
+                stop_event.set()
+        forgot_password_sessions.pop(conn_data.get('fp_session_id'), None)
+        pan_link_sessions.pop(conn_data.get('pan_link_session_id'), None)
+
     def authenticate_connection(self, connection_id: str, api_key_name: str):
         """Mark connection as authenticated."""
         if connection_id in self.active_connections:
@@ -412,7 +426,15 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             try:
                 # Receive message
-                data = await websocket.receive_json()
+                data = await asyncio.wait_for(
+                    websocket.receive_json(),
+                    timeout=WEBSOCKET_IDLE_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.info(f"Closing idle WebSocket {connection_id[:8]}... after 5 minutes")
+                manager.cleanup_sessions(connection_id)
+                await websocket.close(code=1000, reason="Idle timeout")
+                break
             except Exception as e:
                 logger.error(f"Failed to receive JSON: {e}")
                 await websocket.send_json({
@@ -1523,6 +1545,9 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.close(code=1011, reason="Internal server error")
         except:
             pass
+
+    finally:
+        manager.disconnect(connection_id)
 
 
 # ============================================================================

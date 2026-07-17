@@ -64,6 +64,7 @@ Expected:
 - No repeated exceptions appear in the service journal.
 - Newtool has one Gunicorn master and five worker processes. This prevents one synchronous browser job from blocking every health check and WebSocket connection.
 - Registration remains one worker because its browser and OTP session objects are process-local.
+- Newtool closes WebSockets after five minutes without a client message and removes their login, forgot-password, and PAN-link session state. Override `WEBSOCKET_IDLE_TIMEOUT_SECONDS` only when a different idle window is deliberately required.
 
 Test Playwright separately:
 
