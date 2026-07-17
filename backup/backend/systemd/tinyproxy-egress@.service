@@ -1,0 +1,14 @@
+[Unit]
+Description=Source-bound egress proxy %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/tinyproxy -d -c /etc/tinyproxy/egress-%i.conf
+Restart=on-failure
+RestartSec=2
+RuntimeDirectory=tinyproxy
+
+[Install]
+WantedBy=multi-user.target

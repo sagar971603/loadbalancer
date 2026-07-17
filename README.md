@@ -4,6 +4,7 @@ This repository is the source-and-configuration backup and deployment kit for:
 
 - The production NGINX load balancer.
 - The Automation V2 Python application source.
+- The registration API source.
 - Automation V2 backend servers.
 - Adding or removing a backend safely while preserving `ip_hash` sticky sessions.
 
@@ -12,7 +13,8 @@ It intentionally does **not** contain application data, `.env` values, passwords
 ## What is included
 
 ```text
-app/automation-v2/       Python application source and requirements
+app/automation-v2/       Newtool application source and requirements
+app/eportal-hybrid/      Registration application source and requirements
 backup/
   load-balancer/nginx/   Current NGINX configuration snapshot
   backend/nginx/         Backend reverse-proxy configuration
@@ -45,6 +47,8 @@ Backend NGINX on port 80
         v
 FastAPI on 127.0.0.1:8009
 ```
+
+Registration uses the same sticky-session design through backend port `8002`, which proxies to the one-worker registration service on `127.0.0.1:8010`.
 
 `ip_hash` must remain enabled. Automation V2 keeps sessions and WebSocket state in memory, so a client must remain on the same backend.
 
@@ -89,7 +93,7 @@ sudo ./scripts/add-backend.sh 147.93.171.254 80
    sudo ./scripts/setup-backend.sh
    ```
 
-The setup asks privately for `CLIENT_KEY` and `CAPTCHA_API_KEY`; typed values are hidden. It installs the bundled application, Python packages, Playwright, NGINX, and the system service, then performs a health check. It does not change the load balancer.
+The setup asks privately for `CLIENT_KEY` and `CAPTCHA_API_KEY`; typed values are hidden. It installs both bundled applications, Python packages, Playwright, NGINX, and both system services, then performs health checks. It does not change the load balancer.
 
 After deployment, test from the load balancer:
 
@@ -98,6 +102,13 @@ curl -fsS http://NEW_BACKEND_IP/health
 ```
 
 Then add it with workflow A.
+
+Add registration after `http://NEW_BACKEND_IP:8002/health` succeeds:
+
+```bash
+sudo CONFIG=/etc/nginx/sites-available/regpan4.fskindia.com \
+  UPSTREAM=regpan4_backend ./scripts/add-backend.sh NEW_IP 8002
+```
 
 To update an existing backend after a future Git change:
 

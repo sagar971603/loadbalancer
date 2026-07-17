@@ -9,7 +9,7 @@ This guide creates a new Ubuntu 24.04 backend without changing any existing prod
 - Network access to GitHub and Ubuntu package repositories.
 - The `CLIENT_KEY` and `CAPTCHA_API_KEY` values supplied privately by the application owner.
 
-The Python source is bundled in `app/automation-v2`. Application data and secrets are deliberately excluded. Do not store the real environment file in Git.
+The newtool and registration source are bundled in `app/automation-v2` and `app/eportal-hybrid`. Application data and secrets are deliberately excluded. Do not store the real environment file in Git.
 
 ## Recommended two-step deployment
 
@@ -26,7 +26,7 @@ cd loadbalancer
 sudo ./scripts/setup-backend.sh
 ```
 
-Enter `CLIENT_KEY` and `CAPTCHA_API_KEY` when asked. Input is hidden, written to a protected `.env` file, and never stored in this Git checkout. The script installs the bundled application, system packages, Python packages, Playwright browsers, systemd, and NGINX; it validates NGINX and finishes with a health check. It does not add the server to the production load balancer.
+Enter `CLIENT_KEY` and `CAPTCHA_API_KEY` when asked. Input is hidden, written to a protected `.env` file, and never stored in this Git checkout. The script installs both applications, Playwright, the one-worker registration service, and NGINX; it finishes with both health checks. It does not add the server to the production load balancer.
 
 ## Update an existing backend from Git
 
@@ -43,20 +43,23 @@ The bundled source is refreshed while the existing protected `.env` file is reta
 ## Manual validation
 
 ```bash
-systemctl is-enabled automation-v2 nginx
-systemctl is-active automation-v2 nginx
+systemctl is-enabled automation-v2 registration nginx
+systemctl is-active automation-v2 registration nginx
 nginx -t
 curl -fsS http://127.0.0.1:8009/health
 curl -fsS http://127.0.0.1/health
-ss -lntp | grep -E ':(80|8009) '
+curl -fsS http://127.0.0.1:8010/health
+curl -fsS http://127.0.0.1:8002/health
+ss -lntp | grep -E ':(80|8002|8009|8010) '
 journalctl -u automation-v2 -n 50 --no-pager
+journalctl -u registration -n 50 --no-pager
 ```
 
 Expected:
 
-- `automation-v2` and `nginx` are enabled and active.
-- NGINX listens publicly on port 80.
-- Uvicorn listens only on `127.0.0.1:8009`.
+- `automation-v2`, `registration`, and `nginx` are enabled and active.
+- NGINX listens publicly on ports 80 and 8002.
+- The applications listen locally on `127.0.0.1:8009` and `127.0.0.1:8010`.
 - Both health checks return `healthy`.
 - No repeated exceptions appear in the service journal.
 
@@ -91,6 +94,33 @@ Then, from this infrastructure repository on the load balancer:
 sudo ./scripts/add-backend.sh NEW_BACKEND_IP 80
 ```
 
+Add registration only after its direct health check succeeds:
+
+```bash
+curl -fsS --max-time 8 http://NEW_BACKEND_IP:8002/health
+sudo CONFIG=/etc/nginx/sites-available/regpan4.fskindia.com \
+  UPSTREAM=regpan4_backend ./scripts/add-backend.sh NEW_BACKEND_IP 8002
+```
+
+## Dual public-IP outgoing rotation
+
+This is needed only on a backend that owns two public IPv4 addresses. Each job chooses one local proxy and keeps it for the full browser/session job.
+
+1. Install `tinyproxy` and copy `backup/backend/systemd/tinyproxy-egress@.service` to `/etc/systemd/system/`.
+2. Copy `backup/backend/tinyproxy/egress.example.conf` twice to `/etc/tinyproxy/egress-PRIMARY.conf` and `egress-SECONDARY.conf`. Replace `PUBLIC_IP`, `PROXY_PORT`, and `INSTANCE`; use ports `18888` and `18889`.
+3. Enable both proxy instances and confirm their outgoing addresses:
+
+   ```bash
+   systemctl daemon-reload
+   systemctl enable --now tinyproxy-egress@PRIMARY tinyproxy-egress@SECONDARY
+   curl --proxy http://127.0.0.1:18888 https://api.ipify.org
+   curl --proxy http://127.0.0.1:18889 https://api.ipify.org
+   ```
+
+4. Copy `backup/backend/systemd/egress-proxy.conf` as a systemd drop-in for each application service, drain the backend, then restart only those drained services.
+
+Never add workers to registration: its Playwright browser objects and OTP session state are process-local.
+
 ## Reboot validation
 
 If Ubuntu reports a pending kernel update, reboot before adding the backend to production:
@@ -116,7 +146,9 @@ Configuration backups are timestamped beside the installed files:
 
 ```text
 /etc/nginx/sites-available/automation-v2.bak-<timestamp>
+/etc/nginx/sites-available/registration.bak-<timestamp>
 /etc/systemd/system/automation-v2.service.bak-<timestamp>
+/etc/systemd/system/registration.service.bak-<timestamp>
 ```
 
 Restore the required file, then validate:
@@ -125,6 +157,7 @@ Restore the required file, then validate:
 nginx -t
 systemctl daemon-reload
 systemctl restart automation-v2
+systemctl restart registration
 systemctl reload nginx
 curl -fsS http://127.0.0.1/health
 ```

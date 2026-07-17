@@ -1,0 +1,19 @@
+[Unit]
+Description=Automation V2 Registration API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/tools/eportal-hybrid
+EnvironmentFile=/root/tools/automation-v2/api/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
+ExecStart=/root/tools/automation-v2/venv/bin/gunicorn regmainhybrid:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 127.0.0.1:8010 --timeout 300 --threads 2
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
