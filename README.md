@@ -47,7 +47,7 @@ newtool2.fskindia.com load balancer (NGINX + ip_hash)
 Backend NGINX on port 80
         |
         v
-FastAPI on 127.0.0.1:8009
+FastAPI on 127.0.0.1:8009 (5 workers)
 ```
 
 Registration uses the same sticky-session design through backend port `8002`, which proxies to the one-worker registration service on `127.0.0.1:8010`.

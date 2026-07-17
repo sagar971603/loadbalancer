@@ -26,7 +26,7 @@ cd loadbalancer
 sudo ./scripts/setup-backend.sh
 ```
 
-Enter `CLIENT_KEY` and `CAPTCHA_API_KEY` when asked. Input is hidden, written to a protected `.env` file, and never stored in this Git checkout. The script installs both applications, Playwright, the one-worker registration service, and NGINX; it finishes with both health checks. It does not add the server to the production load balancer.
+Enter `CLIENT_KEY` and `CAPTCHA_API_KEY` when asked. Input is hidden, written to a protected `.env` file, and never stored in this Git checkout. The script installs both applications, Playwright, the five-worker Newtool service, the one-worker registration service, and NGINX; it finishes with both health checks. It does not add the server to the production load balancer.
 
 ## Update an existing backend from Git
 
@@ -62,6 +62,8 @@ Expected:
 - The applications listen locally on `127.0.0.1:8009` and `127.0.0.1:8010`.
 - Both health checks return `healthy`.
 - No repeated exceptions appear in the service journal.
+- Newtool has one Gunicorn master and five worker processes. This prevents one synchronous browser job from blocking every health check and WebSocket connection.
+- Registration remains one worker because its browser and OTP session objects are process-local.
 
 Test Playwright separately:
 

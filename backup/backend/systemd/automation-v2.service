@@ -6,11 +6,11 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/tools/automation-v2
+WorkingDirectory=/root/tools/automation-v2/api
 EnvironmentFile=/root/tools/automation-v2/api/.env
 Environment=PYTHONUNBUFFERED=1
 Environment=PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
-ExecStart=/root/tools/automation-v2/venv/bin/python -m uvicorn api.main:app --host 127.0.0.1 --port 8009 --workers 1
+ExecStart=/root/tools/automation-v2/venv/bin/gunicorn main:app --workers 5 --worker-class uvicorn.workers.UvicornWorker --threads 2 --bind 127.0.0.1:8009 --timeout 300
 Restart=always
 RestartSec=5
 TimeoutStopSec=30
