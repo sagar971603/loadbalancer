@@ -23,6 +23,7 @@ from contextlib import asynccontextmanager
 import os
 from dotenv import load_dotenv
 load_dotenv()
+from egress_slots import EgressLease, EgressSlotPool
 from core.eportal_login_enhanced import EPortalClient
 from core.eportal_forgot_password_email_mobile_final import ePortalForgotPassword
 
@@ -43,12 +44,25 @@ active_sessions: Dict[str, Dict[str, Any]] = {}
 forgot_password_sessions: Dict[str, ePortalForgotPassword] = {}
 pan_link_sessions: Dict[str, Dict[str, Any]] = {}
 websocket_connections: Dict[str, Dict[str, Any]] = {}
+queued_logins = set()
 
 # Rate Limiting
 connection_attempts: Dict[str, List[datetime]] = {}
 MAX_CONNECTIONS_PER_IP = 1000
 RATE_LIMIT_WINDOW = timedelta(minutes=5)
 WEBSOCKET_IDLE_TIMEOUT_SECONDS = int(os.getenv("WEBSOCKET_IDLE_TIMEOUT_SECONDS", "300"))
+EGRESS_SLOTS_PER_IP = int(os.getenv("EGRESS_SLOTS_PER_IP", "5"))
+EGRESS_QUEUE_TIMEOUT_SECONDS = int(os.getenv("EGRESS_QUEUE_TIMEOUT_SECONDS", "300"))
+EGRESS_PROXIES = tuple(
+    proxy.strip()
+    for proxy in os.getenv("EGRESS_PROXY_POOL", "").split(",")
+    if proxy.strip()
+)
+egress_slot_pool = EgressSlotPool(
+    EGRESS_PROXIES,
+    slots_per_proxy=EGRESS_SLOTS_PER_IP,
+    lock_dir=os.getenv("EGRESS_SLOT_DIR", "/run/automation-v2/egress-slots"),
+)
 
 # Logging Configuration
 logging.basicConfig(
@@ -127,7 +141,7 @@ def check_rate_limit(client_ip: str) -> bool:
     connection_attempts[client_ip].append(now)
     return True
 
-def create_session(client: EPortalClient, login_result: Dict[str, Any]) -> str:
+def create_session(client: EPortalClient, login_result: Dict[str, Any], egress_lease: EgressLease) -> str:
     """Create a new session and return session ID."""
     session_id = secrets.token_urlsafe(32)
 
@@ -136,11 +150,26 @@ def create_session(client: EPortalClient, login_result: Dict[str, Any]) -> str:
         'login_result': login_result,
         'created_at': datetime.now(),
         'expires_at': datetime.now() + timedelta(hours=2),
-        'pan': login_result.get('user_id')
+        'pan': login_result.get('user_id'),
+        'egress_lease': egress_lease,
     }
 
     logger.info(f"Created session {session_id[:8]}... for PAN {login_result.get('user_id')}")
     return session_id
+
+def release_session(session_id: Optional[str]) -> None:
+    """Release one login session and its outgoing-IP slot."""
+    if not session_id:
+        return
+    session = active_sessions.pop(session_id, None)
+    if not session:
+        return
+    stop_event = getattr(session.get('client'), '_stop_extender_event', None)
+    if stop_event:
+        stop_event.set()
+    lease = session.get('egress_lease')
+    if lease:
+        lease.release()
 
 def create_forgot_password_session(service: ePortalForgotPassword, method: str) -> str:
     """Create a forgot password session and return session ID."""
@@ -158,7 +187,7 @@ def verify_session(session_id: str) -> Optional[Dict[str, Any]]:
 
     session = active_sessions[session_id]
     if datetime.now() > session.get('expires_at', datetime.min):
-        del active_sessions[session_id]
+        release_session(session_id)
         return None
 
     return session
@@ -173,7 +202,7 @@ def cleanup_expired_sessions():
 
     for session_id in expired:
         logger.info(f"Removing expired session {session_id[:8]}...")
-        del active_sessions[session_id]
+        release_session(session_id)
 
     # Clean expired pan_link sessions
     expired_pl = [sid for sid, session in pan_link_sessions.items()
@@ -210,7 +239,8 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down ePortal WebSocket API...")
 
     # Close all sessions
-    active_sessions.clear()
+    for session_id in list(active_sessions):
+        release_session(session_id)
     forgot_password_sessions.clear()
     pan_link_sessions.clear()
 
@@ -285,7 +315,10 @@ async def health_check():
         "timestamp": datetime.now().isoformat(),
         "active_sessions": len(active_sessions),
         "forgot_password_sessions": len(forgot_password_sessions),
-        "websocket_connections": len(websocket_connections)
+        "websocket_connections": len(websocket_connections),
+        "queued_logins_worker_sample": len(queued_logins),
+        "egress_slots_per_ip": EGRESS_SLOTS_PER_IP,
+        "egress_ip_count": len(EGRESS_PROXIES) or 1,
     }
 
 # ============================================================================
@@ -319,6 +352,7 @@ class ConnectionManager:
         if connection_id in self.active_connections:
             conn_data = self.active_connections[connection_id]
             logger.info(f"WebSocket disconnected: {connection_id[:8]}... from {conn_data['client_ip']}")
+            self.cleanup_sessions(connection_id)
             del self.active_connections[connection_id]
 
     def cleanup_sessions(self, connection_id: str):
@@ -326,11 +360,7 @@ class ConnectionManager:
         conn_data = self.active_connections.get(connection_id, {})
         if not conn_data:
             return
-        session = active_sessions.pop(conn_data.get('session_id'), None)
-        if session:
-            stop_event = getattr(session.get('client'), '_stop_extender_event', None)
-            if stop_event:
-                stop_event.set()
+        release_session(conn_data.get('session_id'))
         forgot_password_sessions.pop(conn_data.get('fp_session_id'), None)
         pan_link_sessions.pop(conn_data.get('pan_link_session_id'), None)
 
@@ -501,6 +531,14 @@ async def websocket_endpoint(websocket: WebSocket):
                 # LOGIN ACTION
                 # ========================================================
                 if action == "login":
+                    existing_session = manager.active_connections[connection_id].get('session_id')
+                    if existing_session in active_sessions:
+                        await websocket.send_json({
+                            "type": "error",
+                            "action": action,
+                            "error": "This connection already has an active login session"
+                        })
+                        continue
                     pan = payload.get('pan')
                     password = payload.get('password')
                     if not pan or not password:
@@ -511,12 +549,37 @@ async def websocket_endpoint(websocket: WebSocket):
                         })
                         continue
 
+                    lease = egress_slot_pool.try_acquire(connection_id)
+                    if not lease:
+                        queued_logins.add(connection_id)
+                        logger.info(f"Login {connection_id[:8]}... waiting for an outgoing IP slot")
+                        try:
+                            lease = await egress_slot_pool.acquire(
+                                connection_id,
+                                timeout=EGRESS_QUEUE_TIMEOUT_SECONDS,
+                            )
+                        except TimeoutError as exc:
+                            await websocket.send_json({
+                                "type": "response",
+                                "action": action,
+                                "success": False,
+                                "error": str(exc),
+                                "queued": True,
+                            })
+                            continue
+                        finally:
+                            queued_logins.discard(connection_id)
+
                     credentials = {"PAN": pan, "PASSWORD": password}
-                    client = EPortalClient(credentials)
-                    login_result = client.login()
+                    try:
+                        client = EPortalClient(credentials, proxy_url=lease.proxy_url)
+                        login_result = await asyncio.to_thread(client.login)
+                    except Exception:
+                        lease.release()
+                        raise
 
                     if login_result.get('success'):
-                        session_id = create_session(client, login_result)
+                        session_id = create_session(client, login_result, lease)
                         manager.associate_session(connection_id, session_id)
 
                         await websocket.send_json({
@@ -527,6 +590,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             "data": login_result
                         })
                     else:
+                        lease.release()
                         await websocket.send_json({
 
                             "type": "response",
@@ -541,7 +605,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 # ========================================================
                 elif action == "logout":
                     if session_id and session_id in active_sessions:
-                        del active_sessions[session_id]
+                        release_session(session_id)
                         manager.active_connections[connection_id]['session_id'] = None
 
                         await websocket.send_json({
@@ -583,7 +647,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     try:
                         service = ePortalForgotPassword(pan)
-                        result = service.step1_submit_pan()
+                        result = await asyncio.to_thread(service.step1_submit_pan)
 
                         if not result or not isinstance(result, dict) or not result.get('success'):
                             error_msg = result.get('error') if isinstance(result, dict) else 'Failed to submit PAN'
@@ -605,9 +669,9 @@ async def websocket_endpoint(websocket: WebSocket):
                                 })
                                 continue
 
-                            result = service.step2_request_otp_email_mobile(dob=dob)
+                            result = await asyncio.to_thread(service.step2_request_otp_email_mobile, dob=dob)
                         else:  # aadhaar
-                            result = service.step2_request_otp_aadhaar()
+                            result = await asyncio.to_thread(service.step2_request_otp_aadhaar)
 
                         if result and result.get('success'):
                             fp_session_id = create_forgot_password_session(service, method)
@@ -688,15 +752,15 @@ async def websocket_endpoint(websocket: WebSocket):
                                 })
                                 continue
 
-                            result = service.step3_verify_otp_email_mobile(mobile_otp, email_otp)
+                            result = await asyncio.to_thread(service.step3_verify_otp_email_mobile, mobile_otp, email_otp)
                             if result and result.get('success'):
-                                result = service.step4_set_new_password_email_mobile(new_password)
+                                result = await asyncio.to_thread(service.step4_set_new_password_email_mobile, new_password)
 
                         elif hasattr(service, 'autkn') and service.autkn:
                             # Aadhaar method
-                            result = service.step3_verify_otp_aadhar(mobile_otp)
+                            result = await asyncio.to_thread(service.step3_verify_otp_aadhar, mobile_otp)
                             if result and result.get('success'):
-                                result = service.set_password_aadhar(new_password)
+                                result = await asyncio.to_thread(service.set_password_aadhar, new_password)
 
                         else:
                             await websocket.send_json({
@@ -789,10 +853,10 @@ async def websocket_endpoint(websocket: WebSocket):
                                 })
                                 continue
 
-                            result = service.step2_request_otp_email_mobile(dob=dob)
+                            result = await asyncio.to_thread(service.step2_request_otp_email_mobile, dob=dob)
 
                         elif method == "aadhaar":
-                            result = service.step2_request_otp_aadhaar()
+                            result = await asyncio.to_thread(service.step2_request_otp_aadhaar)
 
                         else:
                             await websocket.send_json({
@@ -869,7 +933,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 
-                        link_result = client.aadhar_pan_linkage(pan=pan, aadhaar_number=aadhaar_number)
+                        link_result = await asyncio.to_thread(
+                            client.aadhar_pan_linkage, pan=pan, aadhaar_number=aadhaar_number
+                        )
                         logger.info(link_result)
                         if not link_result.get("success"):
                             await websocket.send_json({
@@ -891,7 +957,9 @@ async def websocket_endpoint(websocket: WebSocket):
                             })
 
                         else:
-                            otp_result = client.generate_payment_otp(pan=pan, mobile=mobile)
+                            otp_result = await asyncio.to_thread(
+                                client.generate_payment_otp, pan=pan, mobile=mobile
+                            )
                             if not otp_result.get("success"):
                                 await websocket.send_json({
                                     "type": "response",
@@ -975,7 +1043,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
 
                     try:
-                        validate_result = client.validate_payment_otp(otp=otp)
+                        validate_result = await asyncio.to_thread(client.validate_payment_otp, otp=otp)
                         if not validate_result.get("success"):
                             await websocket.send_json({
                                 "type": "response",
@@ -987,7 +1055,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             })
                             continue
 
-                        challan_result = client.create_payment_challan()
+                        challan_result = await asyncio.to_thread(client.create_payment_challan)
                         if not challan_result.get("success"):
                             await websocket.send_json({
                                 "type": "response",
@@ -999,7 +1067,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             })
                             continue
 
-                        payment_result = client.create_payment()
+                        payment_result = await asyncio.to_thread(client.create_payment)
                         await websocket.send_json({
                             "type": "response",
                             "action": action,
@@ -1087,7 +1155,12 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 
-                        otp_result = client.generate_pan_link_otp(aadhar_no=pl_session.get("aadhaar_number"), pan=pl_session.get("pan"), mobile=pl_session.get("mobile"))
+                        otp_result = await asyncio.to_thread(
+                            client.generate_pan_link_otp,
+                            aadhar_no=pl_session.get("aadhaar_number"),
+                            pan=pl_session.get("pan"),
+                            mobile=pl_session.get("mobile"),
+                        )
                         if not otp_result.get("success"):
                             await websocket.send_json({
                                 "type": "response",
@@ -1146,7 +1219,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "error": "No client found in PAN link session. Run pan_link again."
                             })
                             continue
-                        validate_result = client.validate_pan_link_otp(otp=otp)
+                        validate_result = await asyncio.to_thread(client.validate_pan_link_otp, otp=otp)
                         if not validate_result.get("success"):
                             await websocket.send_json({
                                 "type": "response",
@@ -1224,7 +1297,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "error": "Missing year parameter"
                                 })
                                 continue
-                            result = client.get_filling_data(year=year, pan=pan)
+                            result = await asyncio.to_thread(client.get_filling_data, year=year, pan=pan)
 
 
                         if action == "prefill":
@@ -1236,14 +1309,16 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "error": "Missing year parameter"
                                 })
                                 continue
-                            result = client.get_prefill_data(pan=pan, assessment_year=year)
+                            result = await asyncio.to_thread(
+                                client.get_prefill_data, pan=pan, assessment_year=year
+                            )
 
                         #==========================================================
                         # Bank Accounts Action
                         #==========================================================
 
                         elif action == "get_bank_accounts":
-                            result = client.get_bank_accounts(pan=pan)
+                            result = await asyncio.to_thread(client.get_bank_accounts, pan=pan)
 
                         #==========================================================
                         # Prevalidate Bank Account Action
@@ -1256,7 +1331,9 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "error": "Missing account_details parameter"
                                 })
                                 continue
-                            result = client.prevalidate_bank(account_details=account_details)
+                            result = await asyncio.to_thread(
+                                client.prevalidate_bank, account_details=account_details
+                            )
 
                         elif action == "prevalidate_bank_continue":
                             otp= payload.get("otp")
@@ -1267,7 +1344,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "error": "Missing otp parameter"
                                 })
                                 continue
-                            result = client.pre_validate_continue(otp=otp)
+                            result = await asyncio.to_thread(client.pre_validate_continue, otp=otp)
 
 
 
@@ -1278,7 +1355,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         #=========================================================
 
                         elif action == "itr_status":
-                            result = client.get_itr_status(pan)
+                            result = await asyncio.to_thread(client.get_itr_status, pan)
 
 
                         #==========================================================
@@ -1296,14 +1373,16 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 
-                            result = client.e_verify_active_filings(year=year, ack_no=ackn_no,pan=pan)
+                            result = await asyncio.to_thread(
+                                client.e_verify_active_filings, year=year, ack_no=ackn_no, pan=pan
+                            )
 
 
                         elif action == "active_filings":
-                            result = client.get_active_verify_filings(pan=pan)
+                            result = await asyncio.to_thread(client.get_active_verify_filings, pan=pan)
 
                         elif action == "check_aadhaar":
-                            result = client.check_aadhaar_linked(pan=pan)
+                            result = await asyncio.to_thread(client.check_aadhaar_linked, pan=pan)
                         elif action == "everify_otp_verify":
                             otp = payload.get("otp")
                             ackn_no = payload.get("acknowledgment_number")
@@ -1315,13 +1394,19 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "error": "Missing otp or acknowledgment_number parameter"
                                 })
                                 continue
-                            result = client.check_everify_otp(pan=pan,otp=otp,ackn_no=payload.get("acknowledgment_number"), verify_now=verify_now)
+                            result = await asyncio.to_thread(
+                                client.check_everify_otp,
+                                pan=pan,
+                                otp=otp,
+                                ackn_no=payload.get("acknowledgment_number"),
+                                verify_now=verify_now,
+                            )
 
                         elif action == "get_all_challans":
                             crn=None
                             if payload.get("crn"):
                                 crn=payload.get("crn")
-                            result = client.get_challan_history(pan=pan,crn=crn)
+                            result = await asyncio.to_thread(client.get_challan_history, pan=pan, crn=crn)
 
                         elif action == "get_challan_details":
                             year = payload.get("year")
@@ -1332,10 +1417,10 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "error": "Missing year parameter"
                                 })
                                 continue
-                            result = client.get_challan_details(pan=pan,year=year)
+                            result = await asyncio.to_thread(client.get_challan_details, pan=pan, year=year)
 
                         elif action == "send_otp":
-                            result = client.send_otp_aadhaar(pan=pan)
+                            result = await asyncio.to_thread(client.send_otp_aadhaar, pan=pan)
                         elif action == "pay_advance_tax":
                             year = payload.get("year")
                             pd = payload.get("payment_details", {})
@@ -1365,11 +1450,12 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "totalAmtWord": total_amt_word
                             }
 
-                            result = client.pay_payment(
+                            result = await asyncio.to_thread(
+                                client.pay_payment,
                                 pan=pan,
                                 year=year,
                                 payment_details=payment_details,
-                                old_regime=old_income_tax
+                                old_regime=old_income_tax,
                             )
 
 
@@ -1383,7 +1469,9 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "error": "Missing year parameter"
                                 })
                                 continue
-                            result = client.revise_active_efillings(year=year, pan=pan)
+                            result = await asyncio.to_thread(
+                                client.revise_active_efillings, year=year, pan=pan
+                            )
 
 
                         elif action == "download_itr":
@@ -1395,7 +1483,9 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "error": "Missing acknowledgment_number parameter"
                                 })
                                 continue
-                            result = client.get_download_itr_file(pan=pan, ackn_no=ackn_no)
+                            result = await asyncio.to_thread(
+                                client.get_download_itr_file, pan=pan, ackn_no=ackn_no
+                            )
 
                         elif action == "get_itr_receipt":
                             ackn_no = payload.get('ackn_no')
@@ -1407,7 +1497,9 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "error": "Missing ackn_no or year parameter"
                                 })
                                 continue
-                            receipt_result = client.get_itr_receipt(ackn_no=ackn_no, year=year, pan=pan)
+                            receipt_result = await asyncio.to_thread(
+                                client.get_itr_receipt, ackn_no=ackn_no, year=year, pan=pan
+                            )
                             if receipt_result.get('success') and 'file' in receipt_result:
                                 file_path = receipt_result['file']
                                 try:
@@ -1456,14 +1548,15 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "error": "Missing one or more required parameters: pan, itr_type, year, form_type, json_link"
                                 })
                                 continue
-                            result = client.submit_itr_form(
+                            result = await asyncio.to_thread(
+                                client.submit_itr_form,
                                 pan=pan,
                                 itr_type=itr_type,
                                 year=year,
                                 form_type=form_type,
                                 json_link=json_link,
                                 fetch_from_url=fetch_from_url,
-                                verify_now=verify_now
+                                verify_now=verify_now,
                             )
 
 

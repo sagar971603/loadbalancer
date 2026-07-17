@@ -65,6 +65,7 @@ _PROXY_POOL = tuple(
 )
 _proxy_index = 0
 _proxy_lock = threading.Lock()
+_PROXY_UNSET = object()
 
 
 def _next_proxy() -> Optional[str]:
@@ -271,8 +272,9 @@ class EPortalClient:
         ...     filings = client.get_active_verify_filings(credentials.pan)
     """
     
-    def __init__(self, credentials: Union[UserCredentials, Dict[str, str]], 
-                 config: Optional[EPortalConfig] = None):
+    def __init__(self, credentials: Union[UserCredentials, Dict[str, str]],
+                 config: Optional[EPortalConfig] = None,
+                 proxy_url: Optional[str] = _PROXY_UNSET):
         """Initialize ePortal client.
         
         Args:
@@ -293,7 +295,7 @@ class EPortalClient:
         
         self.config = config or EPortalConfig()
         self.auth_state = AuthState()
-        self.proxy_url = _next_proxy()
+        self.proxy_url = _next_proxy() if proxy_url is _PROXY_UNSET else proxy_url
         self.proxies = (
             {"http": self.proxy_url, "https": self.proxy_url}
             if self.proxy_url else {}

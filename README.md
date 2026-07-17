@@ -54,6 +54,14 @@ Registration uses the same sticky-session design through backend port `8002`, wh
 
 `ip_hash` must remain enabled. Automation V2 keeps sessions and WebSocket state in memory, so a client must remain on the same backend.
 
+## Newtool session capacity and waiting
+
+Newtool admits at most five logged-in sessions per outgoing public IP. A dual-IP backend therefore has ten active-session slots. With the current three healthy dual-IP backends, the fleet can hold up to 30 active Newtool sessions. The `.254` Newtool route remains disabled and is not counted.
+
+When all ten slots on the backend selected by `ip_hash` are occupied, a new login waits for a slot for up to 300 seconds. The wait is local to that selected backend; it is not a Redis/global queue and the job is not moved to another backend. The client must keep its WebSocket connected while waiting.
+
+A successful login keeps the same outgoing IP and its slot for the whole session. Logout, WebSocket disconnect, five-minute WebSocket inactivity, login failure, expiry, or a service stop releases the slot. Linux process locks enforce the limit across all five Gunicorn workers and are released automatically if a worker exits. Slow portal calls run outside the WebSocket event loop so health checks and other connections remain responsive.
+
 ## Fastest safe workflows
 
 ### Production traffic dashboard

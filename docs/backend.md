@@ -62,9 +62,10 @@ Expected:
 - The applications listen locally on `127.0.0.1:8009` and `127.0.0.1:8010`.
 - Both health checks return `healthy`.
 - No repeated exceptions appear in the service journal.
-- Newtool has one Gunicorn master and five worker processes. This prevents one synchronous browser job from blocking every health check and WebSocket connection.
+- Newtool has one Gunicorn master and five worker processes. Slow portal calls are run outside the WebSocket event loop so they do not block health checks or unrelated connections.
 - Registration remains one worker because its browser and OTP session objects are process-local.
 - Newtool closes WebSockets after five minutes without a client message and removes their login, forgot-password, and PAN-link session state. Override `WEBSOCKET_IDLE_TIMEOUT_SECONDS` only when a different idle window is deliberately required.
+- Newtool allows five active login sessions per outgoing public IP. Extra logins wait up to five minutes on the backend selected by `ip_hash`.
 
 Test Playwright separately:
 
@@ -121,6 +122,26 @@ This is needed only on a backend that owns two public IPv4 addresses. Each job c
    ```
 
 4. Copy `backup/backend/systemd/egress-proxy.conf` as a systemd drop-in for each application service, drain the backend, then restart only those drained services.
+
+The supplied Newtool drop-in sets:
+
+```text
+EGRESS_SLOTS_PER_IP=5
+EGRESS_QUEUE_TIMEOUT_SECONDS=300
+```
+
+This provides ten active Newtool login sessions on a dual-IP backend. Each successful session holds one slot and keeps the same outgoing IP until logout, WebSocket disconnect, five minutes of WebSocket inactivity, session expiry, or service shutdown. Failed logins release their slot immediately.
+
+If all ten slots are busy, another login waits on that same backend for up to 300 seconds. The queue is intentionally local and in-memory while the client WebSocket stays connected; it does not serialize browser/session objects into Redis and does not transfer a queued job to another backend. Linux file locks make the five-per-IP limit process-safe across the five Newtool workers and automatically free slots after a worker crash.
+
+After restart, confirm the settings without exposing secrets:
+
+```bash
+curl -fsS http://127.0.0.1:8000/health
+systemctl show automation-v2 -p Environment --no-pager
+```
+
+The health response must contain `"egress_slots_per_ip":5` and `"egress_ip_count":2` on a dual-IP backend.
 
 Never add workers to registration: its Playwright browser objects and OTP session state are process-local.
 

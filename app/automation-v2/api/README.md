@@ -159,9 +159,18 @@ Check API health and status.
   "status": "healthy",
   "timestamp": "2025-11-20T10:00:00",
   "active_sessions": 5,
-  "websocket_connections": 2
+  "websocket_connections": 2,
+  "queued_logins_worker_sample": 0,
+  "egress_slots_per_ip": 5,
+  "egress_ip_count": 2
 }
 ```
+
+### Outgoing-IP admission
+
+`EGRESS_SLOTS_PER_IP` defaults to `5`. A successful login holds one slot on its chosen outgoing proxy for the full WebSocket session. `EGRESS_QUEUE_TIMEOUT_SECONDS` defaults to `300`; when every slot is occupied, another login waits locally until a slot is released or that timeout expires. The waiting client must keep its WebSocket connected.
+
+The limit is shared across Gunicorn workers with Linux file locks. It does not require Redis and does not move session objects between workers. A login failure, logout, disconnect, idle cleanup, expiry, worker exit, or service shutdown releases the slot.
 
 ## 🔌 WebSocket Connection
 
