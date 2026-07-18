@@ -44,7 +44,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
 
 from registration_core import ePortalRegistrationApi
-from playwrite_login_with_session_cookie import EPortalLoginStealth
+from playwrite_login_with_session_cookie import EPortalLoginStealth, proxy_slot_status
 
 CLIENT_KEY = os.getenv("CLIENT_KEY")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
@@ -221,7 +221,7 @@ except Exception as e:
 registration_sessions: Dict[str, Dict[str, Any]] = {}
 request_attempts: Dict[str, List[datetime]] = {}
 
-MAX_REQUESTS_PER_IP = 50
+MAX_REQUESTS_PER_IP = int(os.getenv("MAX_REQUESTS_PER_IP", "50"))
 RATE_LIMIT_WINDOW = timedelta(minutes=5)
 SESSION_TIMEOUT = timedelta(minutes=30)
 BROWSER_SESSION_TIMEOUT = timedelta(seconds=int(os.getenv("BROWSER_SESSION_TIMEOUT_SECONDS", "600")))
@@ -886,6 +886,7 @@ async def health_check():
             "window_minutes": int(RATE_LIMIT_WINDOW.total_seconds() / 60)
         },
         "browser_session_timeout_seconds": int(BROWSER_SESSION_TIMEOUT.total_seconds()),
+        "egress_slots": proxy_slot_status(),
         "session_cleanup_interval_seconds": SESSION_CLEANUP_INTERVAL_SECONDS,
         "metrics": metrics.to_dict() if metrics else None
     }

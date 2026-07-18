@@ -30,6 +30,7 @@ scripts/
   check.sh               Syntax and safety checks
   deploy-dashboard.sh    Install/update the protected traffic dashboard
 dashboard/               Dashboard UI, status service and safe route helper
+router/                  Session-aware weighted Registration router and tests
 docs/
   backend.md             Complete backend deployment guide
   load-balancer.md       Complete load-balancer guide and rollback
@@ -50,9 +51,11 @@ Backend NGINX on port 80
 FastAPI on 127.0.0.1:8009 (5 workers)
 ```
 
-Registration uses the same sticky-session design through backend port `8002`, which proxies to the one-worker registration service on `127.0.0.1:8010`.
+Registration passes through the session-aware router on `127.0.0.1:18002`. New `/init` jobs go to the least-used healthy outgoing-IP capacity; the route is encoded in the returned session ID so every OTP follow-up returns to the same one-worker Registration service. Backend port `8002` proxies to that service on `127.0.0.1:8010`.
 
-`ip_hash` must remain enabled. Automation V2 keeps sessions and WebSocket state in memory, so a client must remain on the same backend.
+`ip_hash` must remain enabled for Automation V2. Registration stickiness is handled by the Registration router; do not replace it with direct NGINX round-robin.
+
+Each healthy outgoing Registration IP has five browser-session slots. A dual-IP backend is configured with `weight=2` and therefore receives ten slots; a single healthy-IP backend uses `weight=1` and receives five. Only one incoming address per physical machine belongs in the Registration upstream.
 
 ## Newtool session capacity and waiting
 
@@ -125,12 +128,9 @@ curl -fsS http://NEW_BACKEND_IP/health
 
 Then add it with workflow A.
 
-Add registration after `http://NEW_BACKEND_IP:8002/health` succeeds:
+Add Registration after `http://NEW_BACKEND_IP:8002/health` succeeds. Follow the router-specific steps instead of adding every IP alias as a separate upstream server:
 
-```bash
-sudo CONFIG=/etc/nginx/sites-available/regpan4.fskindia.com \
-  UPSTREAM=regpan4_backend ./scripts/add-backend.sh NEW_IP 8002
-```
+- [Registration router deployment and adding a backend](docs/registration-router.md)
 
 To update an existing backend after a future Git change:
 
@@ -213,7 +213,8 @@ grep 'GET /ws' /var/log/nginx/access.log | tail
 
 - Always inspect `git diff` before deploying or committing.
 - Never commit `.env`, certificate files, passwords, private keys, logs, PDFs, or runtime data.
-- Never remove or replace `ip_hash` without redesigning application session storage.
+- Never remove or replace Newtool's `ip_hash` without redesigning application session storage.
+- Never bypass the Registration router with direct round-robin; OTP calls must follow its encoded session route.
 - Run `nginx -t` before every reload.
 - Reload NGINX; do not restart it for a configuration-only change.
 - Add a backend only after its direct health check succeeds from the load balancer.
@@ -225,3 +226,4 @@ grep 'GET /ws' /var/log/nginx/access.log | tail
 
 - [Backend deployment](docs/backend.md)
 - [Load-balancer deployment and operations](docs/load-balancer.md)
+- [Registration router and backend capacity](docs/registration-router.md)

@@ -51,18 +51,42 @@ _PROXY_POOL = tuple(
     for proxy in os.getenv("EGRESS_PROXY_POOL", "").split(",")
     if proxy.strip()
 )
-_proxy_index = 0
-_proxy_lock = threading.Lock()
+_PROXY_MAX_ACTIVE = int(os.getenv("EGRESS_MAX_ACTIVE", "5"))
+_PROXY_WAIT_SECONDS = float(os.getenv("EGRESS_SLOT_WAIT_SECONDS", "90"))
+_proxy_active = {proxy: 0 for proxy in _PROXY_POOL}
+_proxy_condition = threading.Condition()
 
 
-def _next_proxy():
-    global _proxy_index
+def _acquire_proxy():
     if not _PROXY_POOL:
         return None
-    with _proxy_lock:
-        proxy = _PROXY_POOL[_proxy_index % len(_PROXY_POOL)]
-        _proxy_index += 1
-        return proxy
+    deadline = time.monotonic() + _PROXY_WAIT_SECONDS
+    with _proxy_condition:
+        while True:
+            proxy = min(_PROXY_POOL, key=lambda item: (_proxy_active[item], _PROXY_POOL.index(item)))
+            if _proxy_active[proxy] < _PROXY_MAX_ACTIVE:
+                _proxy_active[proxy] += 1
+                return proxy
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError("All outgoing Registration IP slots are busy")
+            _proxy_condition.wait(remaining)
+
+
+def _release_proxy(proxy):
+    if not proxy:
+        return
+    with _proxy_condition:
+        _proxy_active[proxy] = max(0, _proxy_active.get(proxy, 0) - 1)
+        _proxy_condition.notify()
+
+
+def proxy_slot_status():
+    with _proxy_condition:
+        return {
+            proxy: {"active": _proxy_active[proxy], "limit": _PROXY_MAX_ACTIVE}
+            for proxy in _PROXY_POOL
+        }
 
 # -----------------------------
 #  STEALTH PATCH
@@ -103,7 +127,8 @@ class EPortalLoginStealth:
         self.context = None
         self.playwright = None
         self.browser = None
-        self.proxy_server = _next_proxy()
+        self.proxy_server = _acquire_proxy()
+        self._proxy_released = False
         self.url = "https://eportal.incometax.gov.in/iec/foservices/#/login"
         # Browser selection: argument > env > default
         self.browser_type = (browser_type or os.getenv("PLAYWRIGHT_BROWSER", "firefox")).lower()
@@ -190,6 +215,9 @@ class EPortalLoginStealth:
         self.context = None
         self.browser = None
         self.playwright = None
+        if not self._proxy_released:
+            _release_proxy(self.proxy_server)
+            self._proxy_released = True
 
     def login(self):
         try:

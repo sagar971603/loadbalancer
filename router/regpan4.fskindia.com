@@ -1,8 +1,9 @@
 upstream regpan4_backend {
-    # The Registration router reads these weights and down flags.
+    # Retained for dashboard compatibility; the session-aware router reads
+    # these peers, weights and down flags on every new Registration job.
     ip_hash;
     server 217.217.249.145:8002 weight=2;
-    server 217.216.78.35:8002 weight=1;
+    server 217.216.78.35:8002 weight=1 down;
     server 217.216.78.96:8002 weight=2;
     server 147.93.171.241:8002 weight=1;
 }
@@ -27,13 +28,13 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/regpan4.fskindia.com/privkey.pem; # managed by Certbot
     include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
-
 }
 
 server {
     if ($host = regpan4.fskindia.com) {
         return 301 https://$host$request_uri;
     } # managed by Certbot
+
     listen 80;
     server_name regpan4.fskindia.com;
     return 404; # managed by Certbot
