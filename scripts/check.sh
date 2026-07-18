@@ -10,8 +10,9 @@ if find "$ROOT" -type f \( -name '.env' -o -name '*.pem' -o -name '*.key' -o -na
 fi
 
 grep -qE '^[[:space:]]*ip_hash;' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
-grep -qE 'server[[:space:]]+147[.]93[.]171[.]254:80.*[[:space:]]down;' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
 grep -qE 'server[[:space:]]+147[.]93[.]171[.]241:80.*;' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
+grep -qE 'server[[:space:]]+147[.]93[.]169[.]153:80.*weight=2' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
+grep -qE 'server[[:space:]]+147[.]93[.]171[.]101:80.*weight=2' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
 grep -qE '^[[:space:]]*ip_hash;' "$ROOT/backup/load-balancer/nginx/sites-available/regpan4.fskindia.com"
 grep -q '127.0.0.1:8009' "$ROOT/backup/backend/nginx/automation-v2"
 grep -q '127.0.0.1:8010' "$ROOT/backup/backend/nginx/registration"

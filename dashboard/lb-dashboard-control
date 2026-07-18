@@ -6,13 +6,13 @@ IP=${2:-}
 ACTION=${3:-}
 
 case "$SERVICE" in
-  newtool) CONFIG=/etc/nginx/sites-available/automation_v2; PORT=8000; [[ $IP == 147.93.171.254 || $IP == 147.93.171.241 ]] && PORT=80 ;;
+  newtool) CONFIG=/etc/nginx/sites-available/automation_v2; PORT=8000; [[ $IP == 147.93.171.241 || $IP == 147.93.169.153 || $IP == 147.93.171.101 ]] && PORT=80 ;;
   registration) CONFIG=/etc/nginx/sites-available/regpan4.fskindia.com; PORT=8002 ;;
   *) echo "Invalid service." >&2; exit 2 ;;
 esac
 
 case "$IP" in
-  217.217.249.145|147.93.168.214|217.216.78.35|147.93.168.221|217.216.78.96|147.93.171.116|147.93.171.254|147.93.171.241) ;;
+  217.217.249.145|217.216.78.35|217.216.78.96|147.93.171.241|147.93.169.153|147.93.171.101) ;;
   *) echo "Invalid backend IP." >&2; exit 2 ;;
 esac
 [[ $ACTION == enable || $ACTION == disable ]] || { echo "Invalid action." >&2; exit 2; }

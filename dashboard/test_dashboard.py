@@ -7,6 +7,13 @@ from dashboard import server
 
 
 class DashboardTest(unittest.TestCase):
+    def test_six_machine_topology_and_new_outgoing_ips(self):
+        self.assertEqual(len(server.MACHINES), 6)
+        node_e = next(item for item in server.MACHINES if item["id"] == "node-e")
+        node_f = next(item for item in server.MACHINES if item["id"] == "node-f")
+        self.assertEqual(node_e["egress"]["registration"], ["147.93.169.153", "147.93.171.244"])
+        self.assertEqual(node_f["egress"]["newtool"], ["147.93.171.101", "147.93.171.245"])
+
     def test_parse_upstream_and_status_shape(self):
         config = """upstream demo {
     ip_hash;

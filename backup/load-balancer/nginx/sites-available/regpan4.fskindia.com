@@ -1,10 +1,12 @@
 upstream regpan4_backend {
-    # The Registration router reads these weights and down flags.
+    # The session-aware router reads these peers and weights for every new job.
     ip_hash;
     server 217.217.249.145:8002 weight=2;
     server 217.216.78.35:8002 weight=1;
     server 217.216.78.96:8002 weight=2;
     server 147.93.171.241:8002 weight=1;
+    server 147.93.169.153:8002 weight=2;
+    server 147.93.171.101:8002 weight=2;
 }
 
 server {

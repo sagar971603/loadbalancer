@@ -33,10 +33,38 @@ SERVICES = {
 }
 
 MACHINES = [
-    {"id": "node-a", "label": "Backend A", "ips": ["217.217.249.145", "147.93.168.214"]},
-    {"id": "node-b", "label": "Backend B", "ips": ["217.216.78.35", "147.93.168.221"]},
-    {"id": "node-c", "label": "Backend C", "ips": ["217.216.78.96", "147.93.171.116"]},
-    {"id": "node-d", "label": "Backend D", "ips": ["147.93.171.254", "147.93.171.241"]},
+    {
+        "id": "node-a", "label": "Backend A",
+        "routes": {"newtool": "217.217.249.145", "registration": "217.217.249.145"},
+        "egress": {"newtool": ["217.217.249.145", "147.93.168.214"], "registration": ["217.217.249.145", "147.93.168.214"]},
+    },
+    {
+        "id": "node-b", "label": "Backend B",
+        "routes": {"newtool": "217.216.78.35", "registration": "217.216.78.35"},
+        "egress": {"newtool": ["217.216.78.35", "147.93.168.221"], "registration": ["217.216.78.35"]},
+        "notes": {"147.93.168.221": "Registration portal check disabled; Newtool2 remains available."},
+    },
+    {
+        "id": "node-c", "label": "Backend C",
+        "routes": {"newtool": "217.216.78.96", "registration": "217.216.78.96"},
+        "egress": {"newtool": ["217.216.78.96", "147.93.171.116"], "registration": ["217.216.78.96", "147.93.171.116"]},
+    },
+    {
+        "id": "node-d", "label": "Backend D",
+        "routes": {"newtool": "147.93.171.241", "registration": "147.93.171.241"},
+        "egress": {"newtool": ["147.93.171.241"], "registration": ["147.93.171.241"]},
+        "notes": {"147.93.171.254": "Disabled by operator; traffic uses 147.93.171.241."},
+    },
+    {
+        "id": "node-e", "label": "Backend E",
+        "routes": {"newtool": "147.93.169.153", "registration": "147.93.169.153"},
+        "egress": {"newtool": ["147.93.169.153", "147.93.171.244"], "registration": ["147.93.169.153", "147.93.171.244"]},
+    },
+    {
+        "id": "node-f", "label": "Backend F",
+        "routes": {"newtool": "147.93.171.101", "registration": "147.93.171.101"},
+        "egress": {"newtool": ["147.93.171.101", "147.93.171.245"], "registration": ["147.93.171.101", "147.93.171.245"]},
+    },
 ]
 
 
@@ -77,6 +105,8 @@ def fetch_health(service: str, ip: str, port: int) -> dict:
                     "active_sessions": int(payload.get("active_sessions", 0)),
                     "forgot_password_sessions": int(payload.get("forgot_password_sessions", 0)),
                     "websockets": int(payload.get("websocket_connections", 0)),
+                    "egress_slots": payload.get("egress_slots", {}),
+                    "egress_slots_per_ip": int(payload.get("egress_slots_per_ip", 5)),
                 }
             else:
                 sessions = payload.get("sessions", {})
@@ -87,6 +117,7 @@ def fetch_health(service: str, ip: str, port: int) -> dict:
                     "total_requests": int(metrics.get("total_requests", 0)),
                     "total_errors": int(metrics.get("total_errors", 0)),
                     "uptime_seconds": int(metrics.get("uptime_seconds", 0)),
+                    "egress_slots": payload.get("egress_slots", {}),
                 }
             return {"healthy": healthy, "latency_ms": latency, "details": details, "error": None}
     except (OSError, ValueError, urllib.error.URLError) as exc:
@@ -135,13 +166,50 @@ def build_status() -> dict:
     by_key = {(row["service"], row["ip"]): row for row in checks}
     machines = []
     for machine in MACHINES:
-        rows = []
-        for ip in machine["ips"]:
+        rows = [
+            by_key[(service, ip)]
+            for service, ip in machine["routes"].items()
+            if (service, ip) in by_key
+        ]
+        outgoing_ips = list(dict.fromkeys(
+            ip for ips in machine["egress"].values() for ip in ips
+        ))
+        outgoing = []
+        for ip in outgoing_ips:
+            service_status = {}
             for service in SERVICES:
-                row = by_key.get((service, ip))
-                if row:
-                    rows.append(row)
-        machines.append({**machine, "rows": rows})
+                route = by_key.get((service, machine["routes"][service]))
+                configured_ips = machine["egress"].get(service, [])
+                if ip not in configured_ips:
+                    service_status[service] = {"configured": False, "active": 0, "limit": 0}
+                    continue
+                index = configured_ips.index(ip)
+                slots = list((route or {}).get("details", {}).get("egress_slots", {}).values())
+                fallback_limit = (route or {}).get("details", {}).get("egress_slots_per_ip", 5)
+                slot = slots[index] if index < len(slots) else {"active": None, "limit": fallback_limit}
+                service_status[service] = {
+                    "configured": True,
+                    "healthy": bool(route and route["healthy"]),
+                    "active": slot.get("active"),
+                    "limit": int(slot.get("limit", fallback_limit)),
+                }
+            outgoing.append({
+                "ip": ip,
+                "services": service_status,
+                "note": machine.get("notes", {}).get(ip),
+            })
+        known_ips = set(outgoing_ips)
+        for ip, note in machine.get("notes", {}).items():
+            if ip not in known_ips:
+                outgoing.append({
+                    "ip": ip,
+                    "services": {service: {"configured": False, "active": 0, "limit": 0} for service in SERVICES},
+                    "note": note,
+                })
+        machines.append({
+            "id": machine["id"], "label": machine["label"],
+            "routes": machine["routes"], "rows": rows, "outgoing": outgoing,
+        })
     return {
         "checked_at": datetime.now(timezone.utc).isoformat(),
         "machines": machines,
@@ -205,7 +273,7 @@ class Handler(BaseHTTPRequestHandler):
             action = request.get("action")
             if service not in SERVICES or action not in {"enable", "disable"}:
                 raise ValueError("Invalid service or action")
-            if ip not in {item for machine in MACHINES for item in machine["ips"]}:
+            if ip not in {item for machine in MACHINES for item in machine["routes"].values()}:
                 raise ValueError("Invalid backend IP")
             command = CONTROL.split() + [service, ip, action]
             result = subprocess.run(command, capture_output=True, text=True, timeout=20)

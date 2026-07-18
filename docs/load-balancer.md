@@ -8,7 +8,7 @@ The production dashboard is available at:
 https://newtool2.fskindia.com/server-control/
 ```
 
-It groups dual-IP aliases by physical machine and displays both newtool and registration health, latency, live load-balancer connections, sampled application sessions, WebSockets, registration errors, and upstream route state.
+It groups all six physical machines and displays Newtool2 and Registration health, incoming routes, latency, live connections, and live active/limit counters for every outgoing IP.
 
 Use Enable/Disable only for incoming load-balancer routing. These controls do not switch off an outgoing egress proxy on a dual-IP backend. Every change is allow-listed, backed up under `/var/backups/lb-dashboard`, validated with `nginx -t`, gracefully reloaded, and rolled back on failure. The final enabled backend cannot be disabled.
 
@@ -38,7 +38,7 @@ ip_hash;
 
 Do not change the balancing method. Automation V2 stores sessions and WebSocket connections in process memory.
 
-Backend D uses `147.93.171.241:80` for enabled Newtool traffic. Its `147.93.171.254:80` entry stays present but marked `down` because `.254` cannot reach the Income Tax endpoints. Backend D has one usable outgoing IP and therefore five active Newtool session slots.
+Use exactly one incoming upstream entry per physical machine. Weight that entry by usable outgoing-IP capacity: `weight=2` for a dual-egress machine and `weight=1` for a single-egress machine. Current incoming routes are `.145`, `.35`, `.96`, `.241`, `.153`, and `.101`. Backend D's `.254` address is operator-disabled; D uses only `.241` and has five active Newtool slots.
 
 ## Back up the running load balancer
 

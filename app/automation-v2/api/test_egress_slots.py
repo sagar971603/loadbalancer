@@ -10,10 +10,15 @@ async def check_slots():
         leases = [pool.try_acquire(str(index)) for index in range(4)]
 
         assert all(leases)
+        assert pool.status() == {
+            "proxy-a": {"active": 2, "limit": 2},
+            "proxy-b": {"active": 2, "limit": 2},
+        }
         assert pool.try_acquire("full") is None
         assert {lease.proxy_url for lease in leases} == {"proxy-a", "proxy-b"}
 
         leases[0].release()
+        assert pool.status()[leases[0].proxy_url]["active"] == 1
         replacement = await pool.acquire("replacement", timeout=1)
         assert replacement.proxy_url == leases[0].proxy_url
         replacement.release()

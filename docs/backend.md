@@ -141,7 +141,7 @@ curl -fsS http://127.0.0.1:8000/health
 systemctl show automation-v2 -p Environment --no-pager
 ```
 
-The health response must contain `"egress_slots_per_ip":5` and `"egress_ip_count":2` on a dual-IP backend.
+The health response must contain `"egress_slots_per_ip":5`, `"egress_ip_count":2`, and an `egress_slots` entry for both proxy ports on a dual-IP backend. The production dashboard maps those proxy entries to the server's two public IPs and shows live active/limit values.
 
 Backend D is the single-egress exception: incoming Newtool traffic uses `.241`, `.254` remains disabled, and only `.241` is allowed to reach the Income Tax portal. Its exact reviewed examples are stored in `backup/backend/netplan/backend-d.yaml`, `backup/backend/tinyproxy/egress-241.conf`, and `backup/backend/systemd/egress-proxy-single.conf`. Its health response must contain `"egress_slots_per_ip":5` and `"egress_ip_count":1`.
 

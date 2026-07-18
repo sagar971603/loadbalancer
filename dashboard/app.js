@@ -22,9 +22,15 @@ function notify(message) {
 function detail(row) {
   const d = row.details || {};
   if (row.service === 'newtool') {
-    return `<strong>${row.live_connections || 0}</strong> live · ${d.active_sessions || 0} login · ${d.forgot_password_sessions || 0} reset · ${d.websockets || 0} WS <div class="detail">worker sample</div>`;
+    return `<strong>${row.live_connections || 0}</strong> live &middot; ${d.active_sessions || 0} login &middot; ${d.forgot_password_sessions || 0} reset &middot; ${d.websockets || 0} WS <div class="detail">worker sample</div>`;
   }
-  return `<strong>${row.live_connections || 0}</strong> live · ${d.active_sessions || 0} registration · ${d.total_errors || 0} errors`;
+  return `<strong>${row.live_connections || 0}</strong> live &middot; ${d.active_sessions || 0} registration &middot; ${d.total_errors || 0} errors`;
+}
+
+function egressCell(status) {
+  if (!status.configured) return '<span class="pill disabled">Not used</span>';
+  const active = status.active === null ? '?' : status.active;
+  return `<span class="pill ${status.healthy ? 'healthy' : 'unhealthy'}">${status.healthy ? 'Live' : 'Attention'}</span><div class="slot-count"><strong>${active}</strong> / ${status.limit} active</div>`;
 }
 
 function render(data) {
@@ -32,9 +38,8 @@ function render(data) {
   const healthy = rows.filter(row => row.healthy).length;
   const disabled = rows.filter(row => !row.enabled).length;
   const connections = rows.reduce((sum, row) => sum + Number(row.live_connections || 0), 0);
-  const primaryRows = data.machines.flatMap(machine => ['newtool', 'registration'].map(service => machine.rows.find(row => row.service === service)).filter(Boolean));
-  const sessions = primaryRows.reduce((sum, row) => sum + Number(row.details?.active_sessions || 0) + Number(row.service === 'newtool' ? row.details?.forgot_password_sessions || 0 : 0), 0);
-  const websockets = primaryRows.reduce((sum, row) => sum + Number(row.details?.websockets || 0), 0);
+  const sessions = rows.reduce((sum, row) => sum + Number(row.details?.active_sessions || 0) + Number(row.service === 'newtool' ? row.details?.forgot_password_sessions || 0 : 0), 0);
+  const websockets = rows.reduce((sum, row) => sum + Number(row.details?.websockets || 0), 0);
 
   summary.innerHTML = [
     ['Healthy routes', `${healthy}/${rows.length}`],
@@ -46,14 +51,14 @@ function render(data) {
 
   const allGood = healthy === rows.length && disabled === 0;
   overall.className = `status-dot ${allGood ? 'good' : 'bad'}`;
-  overallText.textContent = allGood ? 'All configured routes healthy' : `${rows.length - healthy} unhealthy · ${disabled} disabled`;
-  checked.textContent = `Updated ${new Date(data.checked_at).toLocaleTimeString()} · auto-refresh 10 seconds`;
+  overallText.textContent = allGood ? 'All configured routes healthy' : `${rows.length - healthy} unhealthy - ${disabled} disabled`;
+  checked.textContent = `Updated ${new Date(data.checked_at).toLocaleTimeString()} - auto-refresh 10 seconds`;
 
   machines.innerHTML = data.machines.map(machine => `
     <article class="machine">
       <div class="machine-head">
-        <div><h2>${escapeHtml(machine.label)}</h2><div class="ip-list">${machine.ips.map(escapeHtml).join(' · ')}</div></div>
-        <span class="pill ${machine.rows.every(row => row.healthy) ? 'healthy' : 'unhealthy'}">${machine.rows.every(row => row.healthy) ? 'Healthy' : 'Attention'}</span>
+        <div><h2>${escapeHtml(machine.label)}</h2><div class="ip-list">Outgoing: ${machine.outgoing.map(item => escapeHtml(item.ip)).join(' &middot; ')}</div></div>
+        <span class="pill ${machine.rows.length === 2 && machine.rows.every(row => row.healthy) ? 'healthy' : 'unhealthy'}">${machine.rows.length === 2 && machine.rows.every(row => row.healthy) ? 'Healthy' : 'Attention'}</span>
       </div>
       <div class="rows"><table>
         <thead><tr><th>Application</th><th>Incoming IP</th><th>Health</th><th>Sessions</th><th>Route</th><th>Control</th></tr></thead>
@@ -67,6 +72,18 @@ function render(data) {
             <td><button class="${row.enabled ? 'danger' : 'secondary'} toggle" data-service="${row.service}" data-ip="${row.ip}" data-action="${row.enabled ? 'disable' : 'enable'}">${row.enabled ? 'Disable' : 'Enable'}</button></td>
           </tr>`).join('')}</tbody>
       </table></div>
+      <div class="egress">
+        <h3>Outgoing IP live capacity</h3>
+        <div class="rows"><table class="egress-table">
+          <thead><tr><th>Outgoing IP</th><th>Newtool2</th><th>Registration</th><th>Note</th></tr></thead>
+          <tbody>${machine.outgoing.map(item => `<tr>
+            <td class="mono">${escapeHtml(item.ip)}</td>
+            <td>${egressCell(item.services.newtool)}</td>
+            <td>${egressCell(item.services.registration)}</td>
+            <td class="detail">${escapeHtml(item.note || 'Available for portal traffic')}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+      </div>
     </article>`).join('');
 
   document.querySelectorAll('.toggle').forEach(button => button.addEventListener('click', () => {
@@ -97,7 +114,7 @@ confirmDialog.addEventListener('close', async () => {
   if (confirmDialog.returnValue !== 'confirm' || !pending) return;
   const action = pending;
   pending = null;
-  notify(`${action.action === 'disable' ? 'Disabling' : 'Enabling'} route…`);
+  notify(`${action.action === 'disable' ? 'Disabling' : 'Enabling'} route...`);
   try {
     const response = await fetch('api/toggle', {
       method: 'POST',

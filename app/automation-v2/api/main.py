@@ -319,6 +319,7 @@ async def health_check():
         "queued_logins_worker_sample": len(queued_logins),
         "egress_slots_per_ip": EGRESS_SLOTS_PER_IP,
         "egress_ip_count": len(EGRESS_PROXIES) or 1,
+        "egress_slots": egress_slot_pool.status(),
     }
 
 # ============================================================================

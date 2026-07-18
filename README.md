@@ -57,11 +57,24 @@ Registration passes through the session-aware router on `127.0.0.1:18002`. New `
 
 Each healthy outgoing Registration IP has five browser-session slots. A dual-IP backend is configured with `weight=2` and therefore receives ten slots; a single healthy-IP backend uses `weight=1` and receives five. Only one incoming address per physical machine belongs in the Registration upstream.
 
+## Current six-machine capacity
+
+| Backend | Incoming route | Outgoing IPs | Newtool slots | Registration slots |
+|---|---|---|---:|---:|
+| A | `217.217.249.145` | `.145`, `147.93.168.214` | 10 | 10 |
+| B | `217.216.78.35` | `.35`, `147.93.168.221` | 10 | 5 (`.221` Registration disabled) |
+| C | `217.216.78.96` | `.96`, `147.93.171.116` | 10 | 10 |
+| D | `147.93.171.241` | `.241` (`.254` disabled) | 5 | 5 |
+| E | `147.93.169.153` | `.153`, `147.93.171.244` | 10 | 10 |
+| F | `147.93.171.101` | `.101`, `147.93.171.245` | 10 | 10 |
+
+Total capacity is 55 simultaneous Newtool sessions and 50 simultaneous Registration sessions. The load balancer contains one incoming route per physical machine; its weight equals the number of usable outgoing IPs so capacity is shared evenly per outgoing IP.
+
 ## Newtool session capacity and waiting
 
-Newtool admits at most five logged-in sessions per outgoing public IP. A dual-IP backend therefore has ten active-session slots. The current three dual-IP backends provide 30 slots, and Backend D contributes five more through `.241`, for 35 active Newtool sessions in total. Backend D's `.254` Newtool route remains disabled and is not counted.
+Newtool admits at most five logged-in sessions per outgoing public IP. A dual-IP backend therefore has ten active-session slots. The five dual-IP backends provide 50 slots, and Backend D contributes five more through `.241`, for 55 active Newtool sessions in total. Backend D's `.254` address remains disabled and is not counted.
 
-When all slots on the backend selected by `ip_hash` are occupied—ten on a dual-IP backend or five on Backend D—a new login waits for a slot for up to 300 seconds. The wait is local to that selected backend; it is not a Redis/global queue and the job is not moved to another backend. The client must keep its WebSocket connected while waiting.
+When all slots on the backend selected by `ip_hash` are occupied (ten on a dual-IP backend or five on Backend D), a new login waits for a slot for up to 300 seconds. The wait is local to that selected backend; it is not a Redis/global queue and the job is not moved to another backend. The client must keep its WebSocket connected while waiting.
 
 A successful login keeps the same outgoing IP and its slot for the whole session. Logout, WebSocket disconnect, five-minute WebSocket inactivity, login failure, expiry, or a service stop releases the slot. Linux process locks enforce the limit across all five Gunicorn workers and are released automatically if a worker exits. Slow portal calls run outside the WebSocket event loop so health checks and other connections remain responsive.
 
@@ -69,7 +82,7 @@ A successful login keeps the same outgoing IP and its slot for the whole session
 
 ### Production traffic dashboard
 
-Open [https://newtool2.fskindia.com/server-control/](https://newtool2.fskindia.com/server-control/) with the separately stored dashboard login. It shows all configured application routes, response time, live load-balancer connections, sampled application sessions, WebSockets, errors, and enabled/disabled state.
+Open [https://newtool2.fskindia.com/server-control/](https://newtool2.fskindia.com/server-control/) with the separately stored dashboard login. It shows all six physical machines, incoming application routes, response time, live load-balancer connections, and per-outgoing-IP active/limit counters for both applications.
 
 Route controls create a timestamped backup, refuse to disable the last backend, preserve `ip_hash`, validate NGINX, and restore the original automatically if validation or reload fails. Disabling an incoming route does not disable a dual-IP backend's outgoing proxy.
 

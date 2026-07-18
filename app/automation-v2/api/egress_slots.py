@@ -62,3 +62,23 @@ class EgressSlotPool:
             if remaining <= 0:
                 raise TimeoutError("No outgoing IP slot became available before the queue timeout")
             await asyncio.sleep(min(0.25, remaining))
+
+    def status(self) -> dict[str, dict[str, int]]:
+        """Return process-safe live usage for every configured outgoing IP."""
+        result = {}
+        for proxy_url in self.proxies:
+            active = 0
+            for slot in range(self.slots_per_proxy):
+                fd = os.open(self._path(proxy_url, slot), os.O_CREAT | os.O_RDWR, 0o600)
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                except BlockingIOError:
+                    active += 1
+                finally:
+                    os.close(fd)
+            result[proxy_url or "direct"] = {
+                "active": active,
+                "limit": self.slots_per_proxy,
+            }
+        return result
