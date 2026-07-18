@@ -36,7 +36,7 @@ MACHINES = [
     {"id": "node-a", "label": "Backend A", "ips": ["217.217.249.145", "147.93.168.214"]},
     {"id": "node-b", "label": "Backend B", "ips": ["217.216.78.35", "147.93.168.221"]},
     {"id": "node-c", "label": "Backend C", "ips": ["217.216.78.96", "147.93.171.116"]},
-    {"id": "node-d", "label": "Backend D", "ips": ["147.93.171.254"]},
+    {"id": "node-d", "label": "Backend D", "ips": ["147.93.171.254", "147.93.171.241"]},
 ]
 
 

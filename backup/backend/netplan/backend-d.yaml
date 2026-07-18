@@ -1,0 +1,22 @@
+network:
+  version: 2
+  ethernets:
+    eth0:
+      match:
+        macaddress: "00:50:56:65:3a:fa"
+      addresses:
+      - "147.93.171.254/22"
+      - "147.93.171.241/22"
+      - "2400:d321:2340:7368:0000:0000:0000:0001/64"
+      nameservers:
+        addresses:
+        - 195.179.224.53
+        - 209.126.15.53
+        search: []
+      set-name: "eth0"
+      routes:
+      - to: "default"
+        via: "147.93.168.1"
+      - on-link: true
+        to: "default"
+        via: "fe80::1"

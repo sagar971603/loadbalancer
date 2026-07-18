@@ -38,6 +38,8 @@ ip_hash;
 
 Do not change the balancing method. Automation V2 stores sessions and WebSocket connections in process memory.
 
+Backend D uses `147.93.171.241:80` for enabled Newtool traffic. Its `147.93.171.254:80` entry stays present but marked `down` because `.254` cannot reach the Income Tax endpoints. Backend D has one usable outgoing IP and therefore five active Newtool session slots.
+
 ## Back up the running load balancer
 
 The backup command copies only selected NGINX text configuration and the enabled-site names. It does not read certificate contents, private keys, logs, or application data, and it does not reload NGINX.
