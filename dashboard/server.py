@@ -47,7 +47,8 @@ MACHINES = [
     {
         "id": "node-c", "label": "Backend C",
         "routes": {"newtool": "217.216.78.96", "registration": "217.216.78.96"},
-        "egress": {"newtool": ["217.216.78.96", "147.93.171.116"], "registration": ["217.216.78.96", "147.93.171.116"]},
+        "egress": {"newtool": ["217.216.78.96", "147.93.171.116"], "registration": ["147.93.171.116"]},
+        "notes": {"217.216.78.96": "Registration OTP calls disabled after repeated portal NetworkError; Newtool2 remains available."},
     },
     {
         "id": "node-d", "label": "Backend D",

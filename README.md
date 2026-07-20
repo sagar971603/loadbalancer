@@ -62,13 +62,13 @@ Each healthy outgoing Registration IP has five browser-session slots. A dual-IP 
 | Backend | Incoming route | Outgoing IPs | Newtool slots | Registration slots |
 |---|---|---|---:|---:|
 | A | `217.217.249.145` | `.145`, `147.93.168.214` | 10 | 10 |
-| B | `217.216.78.35` | `.35`, `147.93.168.221` | 10 | 5 (`.221` Registration disabled) |
-| C | `217.216.78.96` | `.96`, `147.93.171.116` | 10 | 10 |
+| B | `217.216.78.35` | `.35`, `147.93.168.221` | 10 | 0 (Registration route disabled) |
+| C | `217.216.78.96` | `.96`, `147.93.171.116` | 10 | 5 (`.96` Registration disabled) |
 | D | `147.93.171.241` | `.241` (`.254` disabled) | 5 | 5 |
 | E | `147.93.169.153` | `.153`, `147.93.171.244` | 10 | 10 |
 | F | `147.93.171.101` | `.101`, `147.93.171.245` | 10 | 10 |
 
-Total capacity is 55 simultaneous Newtool sessions and 50 simultaneous Registration sessions. The load balancer contains one incoming route per physical machine; its weight equals the number of usable outgoing IPs so capacity is shared evenly per outgoing IP.
+Total capacity is 55 simultaneous Newtool sessions and 40 simultaneous Registration sessions. The load balancer contains one incoming route per physical machine; its weight equals the number of usable outgoing IPs so capacity is shared evenly per outgoing IP.
 
 ## Newtool session capacity and waiting
 

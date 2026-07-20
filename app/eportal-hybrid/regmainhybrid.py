@@ -877,7 +877,11 @@ async def health_check():
             "active_registration_sessions": len(registration_sessions),
             "session_stages": {
                 stage: len([s for s in registration_sessions.values() if s['stage'] == stage])
-                for stage in ['initialized', 'aadhaar_otp_pending', 'final_otp_pending', 'completed']
+                for stage in [
+                    'initialized', 'aadhaar_otp_pending', 'aadhaar_verified',
+                    'details_validated', 'final_otp_pending', 'contact_otps_verified',
+                    'completed',
+                ]
             }
         },
         "rate_limiting": {
@@ -1044,7 +1048,7 @@ def verify_aadhaar_otp(
                 message="This endpoint is only for Aadhaar registration flow",
                 error="Invalid flow type"
             )
-        if session_data['stage'] != 'aadhaar_otp_pending':
+        if session_data['stage'] not in {'aadhaar_otp_pending', 'aadhaar_verified', 'details_validated'}:
             return StandardResponse(
                 success=False,
                 message=f"Invalid stage. Current stage: {session_data['stage']}",
@@ -1056,52 +1060,57 @@ def verify_aadhaar_otp(
             "Verifying Aadhaar OTP",
             extra={"event": "aadhaar_otp_started", "session_ref": _session_ref(request.session_id)},
         )
-        otp_result = run_portal_step(
-            "aadhaar_validate_otp",
-            lambda: reg_service.step4_validate_otp(otp=request.aadhaar_otp, panadhar=True),
-            request.session_id,
-        )
-        if not otp_result.get("success"):
-            if metrics:
-                metrics.total_errors += 1
-            return StandardResponse(
-                success=False,
-                message="Aadhaar OTP verification failed",
-                error=otp_result.get("error", "aadhaar_otp_failed"),
-                data=otp_result,
+        if session_data['stage'] == 'aadhaar_otp_pending':
+            otp_result = run_portal_step(
+                "aadhaar_validate_otp",
+                lambda: reg_service.step4_validate_otp(otp=request.aadhaar_otp, panadhar=True),
+                request.session_id,
             )
+            if not otp_result.get("success"):
+                if metrics:
+                    metrics.total_errors += 1
+                return StandardResponse(
+                    success=False,
+                    message="Aadhaar OTP verification failed",
+                    error=otp_result.get("error", "aadhaar_otp_failed"),
+                    data=otp_result,
+                )
+            session_data['stage'] = 'aadhaar_verified'
 
-        detail_result = run_portal_step(
-            "step2_validate_details",
-            reg_service.step2_validate_details,
-            request.session_id,
-        )
-        if not detail_result.get("success"):
-            if metrics:
-                metrics.total_errors += 1
-            return StandardResponse(
-                success=False,
-                message="Details validation failed after Aadhaar OTP",
-                error=detail_result.get("error", "details_validation_failed"),
-                data=detail_result,
+        if session_data['stage'] == 'aadhaar_verified':
+            detail_result = run_portal_step(
+                "step2_validate_details",
+                reg_service.step2_validate_details,
+                request.session_id,
             )
+            if not detail_result.get("success"):
+                if metrics:
+                    metrics.total_errors += 1
+                return StandardResponse(
+                    success=False,
+                    message="Details validation failed after Aadhaar OTP",
+                    error=detail_result.get("error", "details_validation_failed"),
+                    data=detail_result,
+                )
+            session_data['stage'] = 'details_validated'
 
-        contact_result = run_portal_step(
-            "step3_send_contact_otps",
-            reg_service.step3_validate_contact,
-            request.session_id,
-        )
-        if not contact_result.get("success"):
-            if metrics:
-                metrics.total_errors += 1
-            return StandardResponse(
-                success=False,
-                message="Contact validation failed after Aadhaar OTP",
-                error=contact_result.get("error", "contact_validation_failed"),
-                data=contact_result,
+        if session_data['stage'] == 'details_validated':
+            contact_result = run_portal_step(
+                "step3_send_contact_otps",
+                reg_service.step3_validate_contact,
+                request.session_id,
             )
+            if not contact_result.get("success"):
+                if metrics:
+                    metrics.total_errors += 1
+                return StandardResponse(
+                    success=False,
+                    message="Contact validation failed after Aadhaar OTP",
+                    error=contact_result.get("error", "contact_validation_failed"),
+                    data=contact_result,
+                )
+            session_data['stage'] = 'final_otp_pending'
 
-        registration_sessions[request.session_id]['stage'] = 'final_otp_pending'
         logger.info(
             "Aadhaar OTP verified and contact OTPs sent",
             extra={"event": "aadhaar_otp_completed", "session_ref": _session_ref(request.session_id)},
@@ -1149,7 +1158,7 @@ def verify_final_otp(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Another request is already processing this registration session",
             )
-        if session_data['stage'] != 'final_otp_pending':
+        if session_data['stage'] not in {'final_otp_pending', 'contact_otps_verified'}:
             return StandardResponse(
                 success=False,
                 message=f"Invalid stage. Current stage: {session_data['stage']}",
@@ -1161,24 +1170,26 @@ def verify_final_otp(
             "Verifying contact OTPs",
             extra={"event": "contact_otp_started", "session_ref": _session_ref(request.session_id)},
         )
-        otp_result = run_portal_step(
-            "step4_validate_contact_otps",
-            lambda: reg_service.step4_validate_otp(
-                otp=request.mobile_otp,
-                email_otp=request.email_otp,
-                panadhar=False,
-            ),
-            request.session_id,
-        )
-        if not otp_result.get("success"):
-            if metrics:
-                metrics.failed_registrations += 1
-            return StandardResponse(
-                success=False,
-                message="Final OTP verification failed",
-                error=otp_result.get("error", "final_otp_failed"),
-                data=otp_result,
+        if session_data['stage'] == 'final_otp_pending':
+            otp_result = run_portal_step(
+                "step4_validate_contact_otps",
+                lambda: reg_service.step4_validate_otp(
+                    otp=request.mobile_otp,
+                    email_otp=request.email_otp,
+                    panadhar=False,
+                ),
+                request.session_id,
             )
+            if not otp_result.get("success"):
+                if metrics:
+                    metrics.failed_registrations += 1
+                return StandardResponse(
+                    success=False,
+                    message="Final OTP verification failed",
+                    error=otp_result.get("error", "final_otp_failed"),
+                    data=otp_result,
+                )
+            session_data['stage'] = 'contact_otps_verified'
 
         password_result = run_portal_step(
             "step5_set_password",

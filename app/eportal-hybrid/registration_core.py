@@ -249,20 +249,32 @@ class ePortalRegistrationApi:
         result = self.browser_obj.page.evaluate(
             """
 async ({url, payload, headers}) => {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: payload,
-    credentials: 'include'
-  });
-  const text = await res.text();
-  const responseHeaders = [];
-  res.headers.forEach((value, name) => responseHeaders.push([name, value]));
-  return {status: res.status, headers: responseHeaders, text};
+  let lastError;
+  const maxAttempts = url.includes('/validateOTP') ? 1 : 2;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: payload,
+        credentials: 'include'
+      });
+      const text = await res.text();
+      const responseHeaders = [];
+      res.headers.forEach((value, name) => responseHeaders.push([name, value]));
+      return {status: res.status, headers: responseHeaders, text, attempts: attempt + 1};
+    } catch (error) {
+      lastError = error;
+      if (attempt + 1 < maxAttempts) await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+  throw lastError;
 }
 """,
             {"url": url, "payload": payload, "headers": headers},
         )
+        if result.get("attempts", 1) > 1:
+            logger.warning("Browser fetch recovered on retry")
         response = _CurlResponse(result["status"], _HeaderStore(result.get("headers", [])), result.get("text", ""))
         response.raw_output = result.get("text", "")
         self._sync_browser_cookies_to_session()
@@ -608,7 +620,7 @@ async ({url, payload, headers}) => {
 
             payload = {
                 "dateOfBirth": self.dob,
-                "firstName": base64.b64encode(self.first_name.encode()).decode(),
+                "firstName": base64.b64encode((self.first_name or "").encode()).decode(),
                 "isTrue": True,
                 "lastName": base64.b64encode(self.last_name.encode()).decode(),
                 "midName": base64.b64encode(self.middle_name.encode()).decode() if self.middle_name else "",
@@ -819,7 +831,7 @@ async ({url, payload, headers}) => {
             "serviceName": "indivRegistrationService",
             "reqId": self.req_id,
             "totRegTime": int(self.tot),
-            "firstName": base64.b64encode(self.first_name.encode()).decode(),
+            "firstName": base64.b64encode((self.first_name or "").encode()).decode(),
             "lastName": base64.b64encode(self.last_name.encode()).decode(),
             "midName": base64.b64encode(self.middle_name.encode()).decode() if self.middle_name is not None else "",
             "cred": base64.b64encode(self.new_password.encode()).decode(),
