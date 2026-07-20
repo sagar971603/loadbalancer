@@ -20,6 +20,7 @@ QUEUE_TIMEOUT = float(os.getenv("REG_ROUTER_QUEUE_TIMEOUT", "90"))
 FORWARD_TIMEOUT = float(os.getenv("REG_ROUTER_FORWARD_TIMEOUT", "330"))
 SLOTS_PER_WEIGHT = int(os.getenv("REG_ROUTER_SLOTS_PER_WEIGHT", "5"))
 MAX_BODY = int(os.getenv("REG_ROUTER_MAX_BODY", str(1024 * 1024)))
+MAX_TRACKED_SESSIONS = int(os.getenv("REG_ROUTER_MAX_TRACKED_SESSIONS", "10000"))
 
 # One incoming address per physical machine. NGINX weight is the number of
 # healthy outgoing IPs on that machine, so five slots per IP stays balanced.
@@ -39,6 +40,7 @@ HOP_HEADERS = {
 
 LOCK = threading.Lock()
 PENDING: dict[str, int] = {}
+SESSION_ROUTES: dict[str, str] = {}
 TIE_CURSOR = 0
 
 
@@ -124,9 +126,12 @@ def session_route(body: bytes) -> tuple[str | None, bytes]:
     except (ValueError, json.JSONDecodeError):
         return None, body
     session_id = payload.get("session_id") if isinstance(payload, dict) else None
-    match = SESSION_RE.match(session_id) if isinstance(session_id, str) else None
-    if not match:
+    if not isinstance(session_id, str):
         return None, body
+    match = SESSION_RE.match(session_id)
+    if not match:
+        with LOCK:
+            return SESSION_ROUTES.get(session_id), body
     route, original = match.groups()
     payload["session_id"] = original
     return route, json.dumps(payload, separators=(",", ":")).encode()
@@ -134,11 +139,18 @@ def session_route(body: bytes) -> tuple[str | None, bytes]:
 
 def prefix_sessions(value, route: str):
     if isinstance(value, dict):
-        return {
-            key: (f"{route}~{item}" if key == "session_id" and isinstance(item, str) and not SESSION_RE.match(item)
-                  else prefix_sessions(item, route))
-            for key, item in value.items()
-        }
+        result = {}
+        for key, item in value.items():
+            if key == "session_id" and isinstance(item, str) and not SESSION_RE.match(item):
+                with LOCK:
+                    SESSION_ROUTES.pop(item, None)
+                    SESSION_ROUTES[item] = route
+                    if len(SESSION_ROUTES) > MAX_TRACKED_SESSIONS:
+                        SESSION_ROUTES.pop(next(iter(SESSION_ROUTES)))
+                result[key] = f"{route}~{item}"
+            else:
+                result[key] = prefix_sessions(item, route)
+        return result
     if isinstance(value, list):
         return [prefix_sessions(item, route) for item in value]
     return value

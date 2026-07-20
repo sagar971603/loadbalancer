@@ -29,6 +29,13 @@ class RouterTest(unittest.TestCase):
         response = router.prefix_sessions({"data": {"session_id": "rg_example"}}, "a")
         self.assertEqual(response["data"]["session_id"], "a~rg_example")
 
+        route, unchanged = router.session_route(json.dumps({"session_id": "rg_example"}).encode())
+        self.assertEqual(route, "a")
+        self.assertEqual(json.loads(unchanged)["session_id"], "rg_example")
+
+        route, unchanged = router.session_route(json.dumps({"session_id": []}).encode())
+        self.assertIsNone(route)
+
 
 if __name__ == "__main__":
     unittest.main()
