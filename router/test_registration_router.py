@@ -51,6 +51,7 @@ class RouterTest(unittest.TestCase):
         }
         router.TIE_CURSOR = 0
         router.PENDING.clear()
+        router.COOLDOWN_UNTIL.clear()
         with patch.object(router, "configured_backends", return_value=backends), \
              patch.object(router, "backend_health", return_value=(True, 0)):
             chosen = []
@@ -59,6 +60,36 @@ class RouterTest(unittest.TestCase):
                 chosen.append(route)
                 router.release_backend(route)
         self.assertEqual(chosen, ["a", "a", "c", "d", "e", "e", "f", "f"])
+
+    def test_cooling_backend_is_skipped(self):
+        backends = {
+            "a": {"endpoint": "a:8002", "capacity": 5, "enabled": True},
+            "c": {"endpoint": "c:8002", "capacity": 5, "enabled": True},
+        }
+        router.TIE_CURSOR = 0
+        router.PENDING.clear()
+        router.COOLDOWN_UNTIL.clear()
+        router.COOLDOWN_UNTIL["a"] = 200
+        with patch.object(router, "configured_backends", return_value=backends), \
+             patch.object(router, "backend_health", return_value=(True, 0)), \
+             patch.object(router.time, "monotonic", return_value=100):
+            route, _ = router.choose_backend()
+        router.release_backend(route)
+        router.COOLDOWN_UNTIL.clear()
+        self.assertEqual(route, "c")
+
+    def test_only_safe_step_one_network_error_is_retried(self):
+        network_error = "Page.evaluate: NetworkError when attempting to fetch resource."
+        self.assertTrue(router.is_safe_init_retry({
+            "success": False,
+            "message": "Registration initialization failed",
+            "error": network_error,
+        }))
+        self.assertFalse(router.is_safe_init_retry({
+            "success": False,
+            "message": "Aadhaar validation failed",
+            "error": network_error,
+        }))
 
 
 if __name__ == "__main__":

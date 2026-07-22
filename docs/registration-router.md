@@ -11,7 +11,9 @@ Registration browser objects stay in one backend process and cannot move between
 
 The backend's `EGRESS_MAX_ACTIVE=5` setting is the hard per-IP limit. The local proxy pool chooses the least-used outgoing IP and holds that slot until the browser closes.
 
-If the portal closes a connection before returning any HTTP response, the browser transport makes up to three attempts with 1.5-second and 3-second delays. HTTP responses and business errors such as invalid PAN or OTP are never retried.
+Portal calls are serialized per outgoing IP so concurrent sessions cannot create a retry stampede. If the portal closes a connection before returning any HTTP response, the browser transport makes up to five attempts with 1.5, 3, 6, and 12-second delays. HTTP responses and business errors such as invalid PAN or OTP are never retried.
+
+If all transport attempts still fail, the router cools that backend for new jobs for 120 seconds. A safe Step-1 initialization failure is retried on another healthy backend within the existing 90-second queue window. OTP follow-ups remain on their original backend because moving a live browser session would break the portal session; the user can retry the same OTP step while the backend is cooling down.
 
 The current Registration pool has capacity weights `2, 0, 1, 1, 2, 2` for A-F (40 sessions total). B remains disabled for Registration. C uses `.116`, D uses `.241`, and both outgoing IPs are enabled on A, E, and F. Fast failures do not make a backend receive extra turns; this prevents a degraded route from being selected repeatedly just because it has fewer retained sessions.
 

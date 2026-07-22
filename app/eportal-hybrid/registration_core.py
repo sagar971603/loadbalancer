@@ -7,6 +7,7 @@ import time
 import re
 import subprocess
 import shutil
+import threading
 from pathlib import Path
 from datetime import datetime
 from playwrite_login_with_session_cookie import EPortalLoginStealth
@@ -28,11 +29,19 @@ FINAL_SUBMIT = False
 CURL_BIN = os.getenv("EP_PORTAL_CURL") or shutil.which("curl") or shutil.which("curl.exe")
 HTTP_TRANSPORT = os.getenv("EP_PORTAL_HTTP_TRANSPORT", "curl_cffi").strip().lower()
 CURL_CFFI_IMPERSONATE = os.getenv("EP_PORTAL_CURL_CFFI_IMPERSONATE", "chrome120")
+PROXY_REQUEST_LOCKS = {}
+PROXY_REQUEST_LOCKS_GUARD = threading.Lock()
 MONTHS = {
     "JAN": "01", "FEB": "02", "MAR": "03", "APR": "04",
     "MAY": "05", "JUN": "06", "JUL": "07", "AUG": "08",
     "SEP": "09", "OCT": "10", "NOV": "11", "DEC": "12",
 }
+
+
+def proxy_request_lock(proxy_server):
+    key = proxy_server or "direct"
+    with PROXY_REQUEST_LOCKS_GUARD:
+        return PROXY_REQUEST_LOCKS.setdefault(key, threading.Lock())
 
 
 def normalize_dob(user_details):
@@ -130,6 +139,7 @@ class ePortalRegistrationApi:
         self.session = requests.Session()
         self.browser_obj = browser_obj
         proxy_server = getattr(browser_obj, "proxy_server", None)
+        self.portal_request_lock = proxy_request_lock(proxy_server)
         if proxy_server:
             self.session.proxies.update({"http": proxy_server, "https": proxy_server})
         self.active_fillings=[]
@@ -246,11 +256,13 @@ class ePortalRegistrationApi:
         }
         payload = json.dumps(json_data, separators=(",", ":"))
 
-        result = self.browser_obj.page.evaluate(
-            """
+        with self.portal_request_lock:
+            result = self.browser_obj.page.evaluate(
+                """
 async ({url, payload, headers}) => {
   let lastError;
-  const maxAttempts = 3;
+  const retryDelays = [1500, 3000, 6000, 12000];
+  const maxAttempts = retryDelays.length + 1;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const res = await fetch(url, {
@@ -265,14 +277,14 @@ async ({url, payload, headers}) => {
       return {status: res.status, headers: responseHeaders, text, attempts: attempt + 1};
     } catch (error) {
       lastError = error;
-      if (attempt + 1 < maxAttempts) await new Promise(resolve => setTimeout(resolve, 1500 * (attempt + 1)));
+      if (attempt + 1 < maxAttempts) await new Promise(resolve => setTimeout(resolve, retryDelays[attempt]));
     }
   }
   throw lastError;
 }
 """,
-            {"url": url, "payload": payload, "headers": headers},
-        )
+                {"url": url, "payload": payload, "headers": headers},
+            )
         if result.get("attempts", 1) > 1:
             logger.warning("Browser fetch recovered on retry")
         response = _CurlResponse(result["status"], _HeaderStore(result.get("headers", [])), result.get("text", ""))

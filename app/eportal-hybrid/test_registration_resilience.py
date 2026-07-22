@@ -102,7 +102,7 @@ class RegistrationResilienceTest(unittest.TestCase):
         self.assertEqual(self.service.password_calls, 2)
         self.assertNotIn("rg_test_session", api.registration_sessions)
 
-    def test_browser_transport_retries_fetch_once(self):
+    def test_browser_transport_uses_bounded_backoff(self):
         page = FakePage()
         context = type("Context", (), {"cookies": lambda _self: []})()
         browser = type("Browser", (), {"page": page, "context": context, "proxy_server": None})()
@@ -114,8 +114,20 @@ class RegistrationResilienceTest(unittest.TestCase):
         self.assertEqual(result.status_code, 200)
         self.assertEqual(result.json(), {"ok": True})
         self.assertEqual(len(page.calls), 1)
-        self.assertIn("url.includes('/validateOTP') ? 1 : 2", page.calls[0][0])
+        self.assertIn("const retryDelays = [1500, 3000, 6000, 12000]", page.calls[0][0])
         self.assertIn("Browser fetch recovered on retry", captured.output[0])
+
+    def test_browser_transport_lock_is_shared_per_proxy(self):
+        browser_a = type("Browser", (), {"proxy_server": "http://127.0.0.1:18889"})()
+        browser_b = type("Browser", (), {"proxy_server": "http://127.0.0.1:18889"})()
+        browser_c = type("Browser", (), {"proxy_server": "http://127.0.0.1:18888"})()
+
+        service_a = ePortalRegistrationApi({}, {}, [], browser_a)
+        service_b = ePortalRegistrationApi({}, {}, [], browser_b)
+        service_c = ePortalRegistrationApi({}, {}, [], browser_c)
+
+        self.assertIs(service_a.portal_request_lock, service_b.portal_request_lock)
+        self.assertIsNot(service_a.portal_request_lock, service_c.portal_request_lock)
 
     def test_optional_first_name_is_encoded_as_empty_text(self):
         user = {
