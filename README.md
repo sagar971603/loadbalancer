@@ -51,7 +51,7 @@ Backend NGINX on port 80
 FastAPI on 127.0.0.1:8009 (5 workers)
 ```
 
-Registration passes through the session-aware router on `127.0.0.1:18002`. New `/init` jobs go to the least-used healthy outgoing-IP capacity; the route is encoded in the returned session ID so every OTP follow-up returns to the same one-worker Registration service. Backend port `8002` proxies to that service on `127.0.0.1:8010`.
+Registration passes through the session-aware router on `127.0.0.1:18002`. New `/init` jobs use weighted round-robin with one turn per healthy outgoing IP; the route is encoded in the returned session ID so every OTP follow-up returns to the same one-worker Registration service. Backend port `8002` proxies to that service on `127.0.0.1:8010`.
 
 `ip_hash` must remain enabled for Automation V2. Registration stickiness is handled by the Registration router; do not replace it with direct NGINX round-robin.
 
@@ -61,14 +61,14 @@ Each healthy outgoing Registration IP has five browser-session slots. A dual-IP 
 
 | Backend | Incoming route | Outgoing IPs | Newtool slots | Registration slots |
 |---|---|---|---:|---:|
-| A | `217.217.249.145` | `.145`, `147.93.168.214` | 10 | 0 (Registration route temporarily disabled) |
+| A | `217.217.249.145` | `.145`, `147.93.168.214` | 10 | 10 |
 | B | `217.216.78.35` | `.35`, `147.93.168.221` | 10 | 0 (Registration route disabled) |
-| C | `217.216.78.96` | `.96`, `147.93.171.116` | 10 | 0 (Registration route temporarily disabled) |
-| D | `147.93.171.241` | `.241` (`.254` disabled) | 5 | 0 (Registration route temporarily disabled) |
+| C | `217.216.78.96` | `.96`, `147.93.171.116` | 10 | 5 (`.96` Registration disabled) |
+| D | `147.93.171.241` | `.241` (`.254` disabled) | 5 | 5 |
 | E | `147.93.169.153` | `.153`, `147.93.171.244` | 10 | 10 |
 | F | `147.93.171.101` | `.101`, `147.93.171.245` | 10 | 10 |
 
-Current capacity is 55 simultaneous Newtool sessions and 20 simultaneous Registration sessions. Registration uses E and F while the portal paths from A, C, and D are degraded; their Newtool routes remain enabled. Re-enable a Registration route only after its outgoing IP completes live portal checks without `NetworkError`.
+Total capacity is 55 simultaneous Newtool sessions and 40 simultaneous Registration sessions. Registration is distributed in proportion to outgoing-IP capacity, and a backend at its limit is skipped until a slot is released.
 
 ## Newtool session capacity and waiting
 

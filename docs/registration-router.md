@@ -1,6 +1,6 @@
 # Registration router and adding a backend
 
-Registration browser objects stay in one backend process and cannot move between machines. The load balancer therefore sends each new `/init` job to the least-used healthy capacity, prefixes the returned session ID with that route, and sends every OTP/close request carrying that ID back to the same backend.
+Registration browser objects stay in one backend process and cannot move between machines. The load balancer therefore sends each new `/init` job by weighted round-robin with one turn per outgoing IP, prefixes the returned session ID with that route, and sends every OTP/close request carrying that ID back to the same backend.
 
 ## Capacity rule
 
@@ -11,7 +11,9 @@ Registration browser objects stay in one backend process and cannot move between
 
 The backend's `EGRESS_MAX_ACTIVE=5` setting is the hard per-IP limit. The local proxy pool chooses the least-used outgoing IP and holds that slot until the browser closes.
 
-The current Registration pool has capacity weights `0, 0, 0, 0, 2, 2` for A-F (20 sessions total). A, B, C, and D are disabled for new Registration jobs; E (`.153`, `.244`) and F (`.101`, `.245`) provide the four verified outgoing IPs. This does not disable any Newtool route, and existing prefixed Registration sessions continue to their original backend while it drains.
+If the portal closes a connection before returning any HTTP response, the browser transport makes up to three attempts with 1.5-second and 3-second delays. HTTP responses and business errors such as invalid PAN or OTP are never retried.
+
+The current Registration pool has capacity weights `2, 0, 1, 1, 2, 2` for A-F (40 sessions total). B remains disabled for Registration. C uses `.116`, D uses `.241`, and both outgoing IPs are enabled on A, E, and F. Fast failures do not make a backend receive extra turns; this prevents a degraded route from being selected repeatedly just because it has fewer retained sessions.
 
 ## Add a prepared backend
 

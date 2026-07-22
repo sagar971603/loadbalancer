@@ -92,7 +92,7 @@ def backend_health(endpoint: str) -> tuple[bool, int]:
 
 
 def choose_backend() -> tuple[str, dict] | None:
-    """Reserve the least-used weighted backend; caller must release PENDING."""
+    """Reserve the next weighted backend; caller must release PENDING."""
     global TIE_CURSOR
     with LOCK:
         configured = configured_backends()
@@ -103,12 +103,11 @@ def choose_backend() -> tuple[str, dict] | None:
             healthy, active = backend_health(backend["endpoint"])
             used = active + PENDING.get(route, 0)
             if healthy and used < backend["capacity"]:
-                candidates.append((used / backend["capacity"], route, backend))
+                weight = max(1, backend["capacity"] // SLOTS_PER_WEIGHT)
+                candidates.extend((route, backend) for _ in range(weight))
         if not candidates:
             return None
-        best_score = min(item[0] for item in candidates)
-        tied = sorted(item for item in candidates if item[0] == best_score)
-        _, route, backend = tied[TIE_CURSOR % len(tied)]
+        route, backend = candidates[TIE_CURSOR % len(candidates)]
         TIE_CURSOR += 1
         PENDING[route] = PENDING.get(route, 0) + 1
         return route, backend
@@ -194,7 +193,7 @@ class Handler(BaseHTTPRequestHandler):
         healthy_count = sum(1 for item in backends.values() if item["healthy"])
         self.send_json(200 if healthy_count else 503, {
             "status": "healthy" if healthy_count else "unhealthy",
-            "router": "session-aware-weighted",
+            "router": "session-aware-weighted-round-robin",
             "backends": backends,
         })
 

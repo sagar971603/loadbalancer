@@ -41,6 +41,25 @@ class RouterTest(unittest.TestCase):
         route, unchanged = router.session_route(json.dumps({"session_id": []}).encode())
         self.assertIsNone(route)
 
+    def test_weighted_round_robin_survives_fast_failures(self):
+        backends = {
+            "a": {"endpoint": "a:8002", "capacity": 10, "enabled": True},
+            "c": {"endpoint": "c:8002", "capacity": 5, "enabled": True},
+            "d": {"endpoint": "d:8002", "capacity": 5, "enabled": True},
+            "e": {"endpoint": "e:8002", "capacity": 10, "enabled": True},
+            "f": {"endpoint": "f:8002", "capacity": 10, "enabled": True},
+        }
+        router.TIE_CURSOR = 0
+        router.PENDING.clear()
+        with patch.object(router, "configured_backends", return_value=backends), \
+             patch.object(router, "backend_health", return_value=(True, 0)):
+            chosen = []
+            for _ in range(8):
+                route, _ = router.choose_backend()
+                chosen.append(route)
+                router.release_backend(route)
+        self.assertEqual(chosen, ["a", "a", "c", "d", "e", "e", "f", "f"])
+
 
 if __name__ == "__main__":
     unittest.main()

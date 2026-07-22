@@ -250,7 +250,7 @@ class ePortalRegistrationApi:
             """
 async ({url, payload, headers}) => {
   let lastError;
-  const maxAttempts = url.includes('/validateOTP') ? 1 : 2;
+  const maxAttempts = 3;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const res = await fetch(url, {
@@ -265,7 +265,7 @@ async ({url, payload, headers}) => {
       return {status: res.status, headers: responseHeaders, text, attempts: attempt + 1};
     } catch (error) {
       lastError = error;
-      if (attempt + 1 < maxAttempts) await new Promise(resolve => setTimeout(resolve, 500));
+      if (attempt + 1 < maxAttempts) await new Promise(resolve => setTimeout(resolve, 1500 * (attempt + 1)));
     }
   }
   throw lastError;
