@@ -31,7 +31,7 @@ KNOWN_ENDPOINTS = {
     "147.93.171.241:8002": "d",
 }
 LEGACY_BACKEND = "b"
-SESSION_RE = re.compile(r"^([a-z0-9]+)~(.+)$")
+SESSION_RE = re.compile(r"^([a-z0-9-]+)~(.+)$")
 SERVER_RE = re.compile(r"^\s*server\s+([^;\s]+)([^;]*);\s*$")
 HOP_HEADERS = {
     "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",

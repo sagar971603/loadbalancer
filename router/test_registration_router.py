@@ -26,6 +26,11 @@ class RouterTest(unittest.TestCase):
         route, stripped = router.session_route(encoded)
         self.assertEqual(route, "a")
         self.assertEqual(json.loads(stripped)["session_id"], "rg_example")
+
+        encoded = json.dumps({"session_id": "n147-93-169-153~rg_example"}).encode()
+        route, stripped = router.session_route(encoded)
+        self.assertEqual(route, "n147-93-169-153")
+        self.assertEqual(json.loads(stripped)["session_id"], "rg_example")
         response = router.prefix_sessions({"data": {"session_id": "rg_example"}}, "a")
         self.assertEqual(response["data"]["session_id"], "a~rg_example")
 

@@ -11,7 +11,7 @@ Registration browser objects stay in one backend process and cannot move between
 
 The backend's `EGRESS_MAX_ACTIVE=5` setting is the hard per-IP limit. The local proxy pool chooses the least-used outgoing IP and holds that slot until the browser closes.
 
-The current six-machine pool has capacity weights `2, 1, 2, 1, 2, 2` for A-F (50 sessions total). B's `.221` address is excluded only from Registration, and D uses only `.241`. Both outgoing IPs are enabled for Registration on E (`.153`, `.244`) and F (`.101`, `.245`).
+The current Registration pool has capacity weights `0, 0, 0, 0, 2, 2` for A-F (20 sessions total). A, B, C, and D are disabled for new Registration jobs; E (`.153`, `.244`) and F (`.101`, `.245`) provide the four verified outgoing IPs. This does not disable any Newtool route, and existing prefixed Registration sessions continue to their original backend while it drains.
 
 ## Add a prepared backend
 
