@@ -57,7 +57,7 @@ Registration passes through the session-aware router on `127.0.0.1:18002`. New `
 
 Each healthy outgoing Registration IP has five browser-session slots. A dual-IP backend is configured with `weight=2` and therefore receives ten slots; a single healthy-IP backend uses `weight=1` and receives five. Only one incoming address per physical machine belongs in the Registration upstream.
 
-## Current six-machine capacity
+## Current eight-machine capacity
 
 | Backend | Incoming route | Outgoing IPs | Newtool slots | Registration slots |
 |---|---|---|---:|---:|
@@ -67,12 +67,14 @@ Each healthy outgoing Registration IP has five browser-session slots. A dual-IP 
 | D | `147.93.171.241` | `.241` (`.254` disabled) | 5 | 5 |
 | E | `147.93.169.153` | `.153`, `147.93.171.244` | 10 | 10 |
 | F | `147.93.171.101` | `.101`, `147.93.171.245` | 10 | 10 |
+| G | `147.93.169.212` | `.212` (`.213` staged, provider routing pending) | 5 | 5 |
+| H | `147.93.169.214` | `.214` (`.215` staged, provider routing pending) | 5 | 5 |
 
-Total capacity is 55 simultaneous Newtool sessions and 40 simultaneous Registration sessions. Registration is distributed in proportion to outgoing-IP capacity, and a backend at its limit is skipped until a slot is released.
+Total capacity is 65 simultaneous Newtool sessions and 50 simultaneous Registration sessions. Registration is distributed in proportion to outgoing-IP capacity, and a backend at its limit is skipped until a slot is released.
 
 ## Newtool session capacity and waiting
 
-Newtool admits at most five logged-in sessions per outgoing public IP. A dual-IP backend therefore has ten active-session slots. The five dual-IP backends provide 50 slots, and Backend D contributes five more through `.241`, for 55 active Newtool sessions in total. Backend D's `.254` address remains disabled and is not counted.
+Newtool admits at most five logged-in sessions per outgoing public IP. A dual-IP backend therefore has ten active-session slots. The existing pool provides 55 slots, and the healthy primary IPs on Backends G and H add five each, for 65 active Newtool sessions. The staged `.213` and `.215` addresses are not counted until Contabo routing works and their source-bound proxy tests pass.
 
 When all slots on the backend selected by `ip_hash` are occupied (ten on a dual-IP backend or five on Backend D), a new login waits for a slot for up to 300 seconds. The wait is local to that selected backend; it is not a Redis/global queue and the job is not moved to another backend. The client must keep its WebSocket connected while waiting.
 
@@ -82,7 +84,7 @@ A successful login keeps the same outgoing IP and its slot for the whole session
 
 ### Production traffic dashboard
 
-Open [https://newtool2.fskindia.com/server-control/](https://newtool2.fskindia.com/server-control/) with the separately stored dashboard login. It shows all six physical machines, incoming application routes, response time, live load-balancer connections, and per-outgoing-IP active/limit counters for both applications.
+Open [https://newtool2.fskindia.com/server-control/](https://newtool2.fskindia.com/server-control/) with the separately stored dashboard login. It shows all eight physical machines, incoming application routes, response time, live load-balancer connections, and per-outgoing-IP active/limit counters for both applications.
 
 Route controls create a timestamped backup, refuse to disable the last backend, preserve `ip_hash`, validate NGINX, and restore the original automatically if validation or reload fails. Disabling an incoming route does not disable a dual-IP backend's outgoing proxy.
 

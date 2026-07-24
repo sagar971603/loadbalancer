@@ -15,7 +15,7 @@ Portal calls are serialized per outgoing IP so concurrent sessions cannot create
 
 If all transport attempts still fail, the router cools that backend for new jobs for 120 seconds. A safe Step-1 initialization failure is retried on another healthy backend within the existing 90-second queue window. OTP follow-ups remain on their original backend because moving a live browser session would break the portal session; the user can retry the same OTP step while the backend is cooling down.
 
-The current Registration pool has capacity weights `2, 0, 1, 1, 2, 2` for A-F (40 sessions total). B remains disabled for Registration. C uses `.116`, D uses `.241`, and both outgoing IPs are enabled on A, E, and F. Fast failures do not make a backend receive extra turns; this prevents a degraded route from being selected repeatedly just because it has fewer retained sessions.
+The current Registration pool has capacity weights `2, 0, 1, 1, 2, 2, 1, 1` for A-H (50 sessions total). B remains disabled for Registration. C uses `.116`, D uses `.241`, and both outgoing IPs are enabled on A, E, and F. G and H currently use only `.212` and `.214`; increase their weights to `2` only after `.213` and `.215` pass direct proxy tests. Fast failures do not make a backend receive extra turns; this prevents a degraded route from being selected repeatedly just because it has fewer retained sessions.
 
 ## Add a prepared backend
 

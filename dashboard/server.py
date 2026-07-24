@@ -66,6 +66,18 @@ MACHINES = [
         "routes": {"newtool": "147.93.171.101", "registration": "147.93.171.101"},
         "egress": {"newtool": ["147.93.171.101", "147.93.171.245"], "registration": ["147.93.171.101", "147.93.171.245"]},
     },
+    {
+        "id": "node-g", "label": "Backend G",
+        "routes": {"newtool": "147.93.169.212", "registration": "147.93.169.212"},
+        "egress": {"newtool": ["147.93.169.212"], "registration": ["147.93.169.212"]},
+        "notes": {"147.93.169.213": "Staged but disabled pending Contabo routing."},
+    },
+    {
+        "id": "node-h", "label": "Backend H",
+        "routes": {"newtool": "147.93.169.214", "registration": "147.93.169.214"},
+        "egress": {"newtool": ["147.93.169.214"], "registration": ["147.93.169.214"]},
+        "notes": {"147.93.169.215": "Staged but disabled pending Contabo routing."},
+    },
 ]
 
 

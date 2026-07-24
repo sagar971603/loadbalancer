@@ -147,6 +147,20 @@ Backend D is the single-egress exception: incoming Newtool traffic uses `.241`, 
 
 Never add workers to registration: its Playwright browser objects and OTP session state are process-local.
 
+### Activate a staged additional IP
+
+Backends G and H were deployed with their additional proxy configuration and dual-IP service files already staged. When Contabo routing is fixed:
+
+1. Disable both routes for that backend in the dashboard and wait until its sessions drain.
+2. Run the guarded activation command on the backend:
+
+   ```bash
+   sudo /root/loadbalancer/scripts/activate-additional-egress.sh SECONDARY_IP INSTANCE --drained
+   ```
+
+   Use `147.93.169.213 213` for Backend G or `147.93.169.215 215` for Backend H. The script refuses activation unless the proxy proves that its public address is the requested secondary IP. If application validation fails, it restores the single-IP service files automatically.
+3. Change that backend's Newtool and Registration weights from `1` to `2` on the load balancer, update its dashboard egress list, validate NGINX, reload, and re-enable both routes.
+
 ## Reboot validation
 
 If Ubuntu reports a pending kernel update, reboot before adding the backend to production:

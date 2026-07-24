@@ -7,12 +7,18 @@ from dashboard import server
 
 
 class DashboardTest(unittest.TestCase):
-    def test_six_machine_topology_and_new_outgoing_ips(self):
-        self.assertEqual(len(server.MACHINES), 6)
+    def test_eight_machine_topology_and_new_outgoing_ips(self):
+        self.assertEqual(len(server.MACHINES), 8)
         node_e = next(item for item in server.MACHINES if item["id"] == "node-e")
         node_f = next(item for item in server.MACHINES if item["id"] == "node-f")
+        node_g = next(item for item in server.MACHINES if item["id"] == "node-g")
+        node_h = next(item for item in server.MACHINES if item["id"] == "node-h")
         self.assertEqual(node_e["egress"]["registration"], ["147.93.169.153", "147.93.171.244"])
         self.assertEqual(node_f["egress"]["newtool"], ["147.93.171.101", "147.93.171.245"])
+        self.assertEqual(node_g["egress"]["registration"], ["147.93.169.212"])
+        self.assertEqual(node_h["egress"]["newtool"], ["147.93.169.214"])
+        self.assertIn("147.93.169.213", node_g["notes"])
+        self.assertIn("147.93.169.215", node_h["notes"])
 
     def test_parse_upstream_and_status_shape(self):
         config = """upstream demo {

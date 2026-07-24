@@ -13,7 +13,11 @@ grep -qE '^[[:space:]]*ip_hash;' "$ROOT/backup/load-balancer/nginx/sites-availab
 grep -qE 'server[[:space:]]+147[.]93[.]171[.]241:80.*;' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
 grep -qE 'server[[:space:]]+147[.]93[.]169[.]153:80.*weight=2' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
 grep -qE 'server[[:space:]]+147[.]93[.]171[.]101:80.*weight=2' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
+grep -qE 'server[[:space:]]+147[.]93[.]169[.]212:80.*weight=1' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
+grep -qE 'server[[:space:]]+147[.]93[.]169[.]214:80.*weight=1' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
 grep -qE '^[[:space:]]*ip_hash;' "$ROOT/backup/load-balancer/nginx/sites-available/regpan4.fskindia.com"
+grep -qE 'server[[:space:]]+147[.]93[.]169[.]212:8002.*weight=1' "$ROOT/backup/load-balancer/nginx/sites-available/regpan4.fskindia.com"
+grep -qE 'server[[:space:]]+147[.]93[.]169[.]214:8002.*weight=1' "$ROOT/backup/load-balancer/nginx/sites-available/regpan4.fskindia.com"
 grep -q '127.0.0.1:8009' "$ROOT/backup/backend/nginx/automation-v2"
 grep -q '127.0.0.1:8010' "$ROOT/backup/backend/nginx/registration"
 [[ -f $ROOT/app/automation-v2/api/main.py ]]
@@ -25,6 +29,7 @@ grep -q '127.0.0.1:8010' "$ROOT/backup/backend/nginx/registration"
 [[ -f $ROOT/dashboard/server.py ]]
 [[ -f $ROOT/dashboard/lb-dashboard-control ]]
 [[ -f $ROOT/scripts/deploy-dashboard.sh ]]
+[[ -x $ROOT/scripts/activate-additional-egress.sh ]]
 grep -q '147.93.171.241' "$ROOT/dashboard/lb-dashboard-control"
 grep -q 'EGRESS_SLOTS_PER_IP=5' "$ROOT/backup/backend/systemd/egress-proxy-single.conf"
 
