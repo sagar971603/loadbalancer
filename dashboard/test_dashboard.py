@@ -15,10 +15,8 @@ class DashboardTest(unittest.TestCase):
         node_h = next(item for item in server.MACHINES if item["id"] == "node-h")
         self.assertEqual(node_e["egress"]["registration"], ["147.93.169.153", "147.93.171.244"])
         self.assertEqual(node_f["egress"]["newtool"], ["147.93.171.101", "147.93.171.245"])
-        self.assertEqual(node_g["egress"]["registration"], ["147.93.169.212"])
-        self.assertEqual(node_h["egress"]["newtool"], ["147.93.169.214"])
-        self.assertIn("147.93.169.213", node_g["notes"])
-        self.assertIn("147.93.169.215", node_h["notes"])
+        self.assertEqual(node_g["egress"]["registration"], ["147.93.169.212", "147.93.169.213"])
+        self.assertEqual(node_h["egress"]["newtool"], ["147.93.169.214", "147.93.169.215"])
 
     def test_parse_upstream_and_status_shape(self):
         config = """upstream demo {

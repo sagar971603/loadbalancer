@@ -7,8 +7,8 @@ upstream newtool2_backend {
     server 147.93.171.241:80 weight=1 max_fails=3 fail_timeout=30s;
     server 147.93.169.153:80 weight=2 max_fails=3 fail_timeout=30s;
     server 147.93.171.101:80 weight=2 max_fails=3 fail_timeout=30s;
-    server 147.93.169.212:80 weight=1 max_fails=3 fail_timeout=30s;
-    server 147.93.169.214:80 weight=1 max_fails=3 fail_timeout=30s;
+    server 147.93.169.212:80 weight=2 max_fails=3 fail_timeout=30s;
+    server 147.93.169.214:80 weight=2 max_fails=3 fail_timeout=30s;
 }
 
 server {

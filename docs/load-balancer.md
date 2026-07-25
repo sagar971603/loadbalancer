@@ -38,7 +38,7 @@ ip_hash;
 
 Do not change the balancing method. Automation V2 stores sessions and WebSocket connections in process memory.
 
-Use exactly one incoming upstream entry per physical machine. Weight that entry by usable outgoing-IP capacity: `weight=2` for a dual-egress machine and `weight=1` for a single-egress machine. Current incoming routes are `.145`, `.35`, `.96`, `.241`, `.153`, `.101`, `.212`, and `.214`. Backend B's Registration route is disabled. Backend C uses only `.116` for Registration, so its Registration weight is `1`; `.96` remains available to Newtool2. Backend D's `.254` address is operator-disabled. Backends G and H use only `.212` and `.214` until Contabo fixes `.213` and `.215`.
+Use exactly one incoming upstream entry per physical machine. Weight that entry by usable outgoing-IP capacity: `weight=2` for a dual-egress machine and `weight=1` for a single-egress machine. Current incoming routes are `.145`, `.35`, `.96`, `.241`, `.153`, `.101`, `.212`, and `.214`. Backend B's Registration route is disabled. Backend C uses only `.116` for Registration, so its Registration weight is `1`; `.96` remains available to Newtool2. Backend D's `.254` address is operator-disabled. Backends G and H use their verified additional egress IPs `.213` and `.215` and have `weight=2` for both applications.
 
 ## Back up the running load balancer
 

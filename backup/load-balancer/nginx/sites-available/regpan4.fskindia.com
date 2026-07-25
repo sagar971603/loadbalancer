@@ -8,8 +8,8 @@ upstream regpan4_backend {
     server 147.93.171.241:8002 weight=1;
     server 147.93.169.153:8002 weight=2;
     server 147.93.171.101:8002 weight=2;
-    server 147.93.169.212:8002 weight=1;
-    server 147.93.169.214:8002 weight=1;
+    server 147.93.169.212:8002 weight=2;
+    server 147.93.169.214:8002 weight=2;
 }
 
 server {

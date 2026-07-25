@@ -147,9 +147,9 @@ Backend D is the single-egress exception: incoming Newtool traffic uses `.241`, 
 
 Never add workers to registration: its Playwright browser objects and OTP session state are process-local.
 
-### Activate a staged additional IP
+### Additional-IP activation record and procedure
 
-Backends G and H were deployed with their additional proxy configuration and dual-IP service files already staged. When Contabo routing is fixed:
+Backends G and H activated `.213` and `.215` on 2026-07-25 after source-bound gateway, Internet, proxy, and Income Tax portal tests passed. Both applications now use two outgoing IPs on each machine. For a future staged additional-IP activation:
 
 1. Disable both routes for that backend in the dashboard and wait until its sessions drain.
 2. Run the guarded activation command on the backend:
