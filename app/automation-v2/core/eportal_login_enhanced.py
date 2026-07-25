@@ -4798,7 +4798,7 @@ class EPortalClient:
                 }
 
             payload = {
-                "bankAcctNum": self.account_details.get("accountNo"),
+                "bankAcctNum": self.account_details.get("accountNumber"),
                 "accountType": "1" if self.account_details.get("accountType", "savings").lower() == "savings" else "2",
                 "accountHolderType": "P" if self.account_details.get("accountHolderType", "individual").lower() == "individual" else "C",
                 "refundFlag": "Y",
