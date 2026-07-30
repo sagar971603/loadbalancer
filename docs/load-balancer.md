@@ -8,7 +8,7 @@ The production dashboard is available at:
 https://newtool2.fskindia.com/server-control/
 ```
 
-It groups all eight physical machines and displays Newtool2 and Registration health, incoming routes, latency, live connections, and live active/limit counters for every outgoing IP.
+It groups all nine physical machines and displays Newtool2 and Registration health, incoming routes, latency, live connections, and live active/limit counters for every outgoing IP.
 
 Use Enable/Disable only for incoming load-balancer routing. These controls do not switch off an outgoing egress proxy on a dual-IP backend. Every change is allow-listed, backed up under `/var/backups/lb-dashboard`, validated with `nginx -t`, gracefully reloaded, and rolled back on failure. The final enabled backend cannot be disabled.
 
@@ -38,7 +38,7 @@ ip_hash;
 
 Do not change the balancing method. Automation V2 stores sessions and WebSocket connections in process memory.
 
-Use exactly one incoming upstream entry per physical machine. Weight that entry by usable outgoing-IP capacity: `weight=2` for a dual-egress machine and `weight=1` for a single-egress machine. Current incoming routes are `.145`, `.35`, `.96`, `.241`, `.153`, `.101`, `.212`, and `.214`. Backend B's Registration route is disabled. Backend C uses only `.116` for Registration, so its Registration weight is `1`; `.96` remains available to Newtool2. Backend D's `.254` address is operator-disabled. Backends G and H use their verified additional egress IPs `.213` and `.215` and have `weight=2` for both applications.
+Use exactly one incoming upstream entry per physical machine. Weight that entry by usable outgoing-IP capacity: `weight=2` for a dual-egress machine and `weight=1` for a single-egress machine. Current incoming routes are `.145`, `.35`, `.96`, `.153`, `.101`, `.212`, `.214`, `.229`, and `.27`. Backend B's Registration route is disabled. Backend C uses only `.116` for Registration, so its Registration weight is `1`; `.96` remains available to Newtool2. Every enabled Newtool backend has two verified outgoing IPv4 addresses and equal weight `2`.
 
 ## Back up the running load balancer
 

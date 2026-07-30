@@ -143,7 +143,9 @@ systemctl show automation-v2 -p Environment --no-pager
 
 The health response must contain `"egress_slots_per_ip":5`, `"egress_ip_count":2`, and an `egress_slots` entry for both proxy ports on a dual-IP backend. The production dashboard maps those proxy entries to the server's two public IPs and shows live active/limit values.
 
-Backend D is the single-egress exception: incoming Newtool traffic uses `.241`, `.254` remains disabled, and only `.241` is allowed to reach the Income Tax portal. Its exact reviewed examples are stored in `backup/backend/netplan/backend-d.yaml`, `backup/backend/tinyproxy/egress-241.conf`, and `backup/backend/systemd/egress-proxy-single.conf`. Its health response must contain `"egress_slots_per_ip":5` and `"egress_ip_count":1`.
+The former Backend D (`147.93.171.241`) was removed from both pools on 2026-07-30. Backends I and J replaced it with incoming routes `217.217.249.229` and `217.216.58.27`; their verified additional egress addresses are `147.93.168.74` and `147.93.168.146`.
+
+Contabo IPv6 connectivity is active, but the Income Tax portal did not publish a native IPv6 address when tested on 2026-07-30. Do not add IPv6 proxy slots unless a fresh direct `curl -6` portal test succeeds; IPv4-mapped resolver output is not native IPv6 reachability.
 
 Never add workers to registration: its Playwright browser objects and OTP session state are process-local.
 

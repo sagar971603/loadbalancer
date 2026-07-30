@@ -7,16 +7,21 @@ from dashboard import server
 
 
 class DashboardTest(unittest.TestCase):
-    def test_eight_machine_topology_and_new_outgoing_ips(self):
-        self.assertEqual(len(server.MACHINES), 8)
+    def test_nine_machine_topology_and_new_outgoing_ips(self):
+        self.assertEqual(len(server.MACHINES), 9)
+        self.assertFalse(any(item["id"] == "node-d" for item in server.MACHINES))
         node_e = next(item for item in server.MACHINES if item["id"] == "node-e")
         node_f = next(item for item in server.MACHINES if item["id"] == "node-f")
         node_g = next(item for item in server.MACHINES if item["id"] == "node-g")
         node_h = next(item for item in server.MACHINES if item["id"] == "node-h")
+        node_i = next(item for item in server.MACHINES if item["id"] == "node-i")
+        node_j = next(item for item in server.MACHINES if item["id"] == "node-j")
         self.assertEqual(node_e["egress"]["registration"], ["147.93.169.153", "147.93.171.244"])
         self.assertEqual(node_f["egress"]["newtool"], ["147.93.171.101", "147.93.171.245"])
         self.assertEqual(node_g["egress"]["registration"], ["147.93.169.212", "147.93.169.213"])
         self.assertEqual(node_h["egress"]["newtool"], ["147.93.169.214", "147.93.169.215"])
+        self.assertEqual(node_i["egress"]["registration"], ["217.217.249.229", "147.93.168.74"])
+        self.assertEqual(node_j["egress"]["newtool"], ["217.216.58.27", "147.93.168.146"])
 
     def test_parse_upstream_and_status_shape(self):
         config = """upstream demo {

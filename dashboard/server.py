@@ -51,12 +51,6 @@ MACHINES = [
         "notes": {"217.216.78.96": "Registration OTP calls disabled after repeated portal NetworkError; Newtool2 remains available."},
     },
     {
-        "id": "node-d", "label": "Backend D",
-        "routes": {"newtool": "147.93.171.241", "registration": "147.93.171.241"},
-        "egress": {"newtool": ["147.93.171.241"], "registration": ["147.93.171.241"]},
-        "notes": {"147.93.171.254": "Disabled by operator; traffic uses 147.93.171.241."},
-    },
-    {
         "id": "node-e", "label": "Backend E",
         "routes": {"newtool": "147.93.169.153", "registration": "147.93.169.153"},
         "egress": {"newtool": ["147.93.169.153", "147.93.171.244"], "registration": ["147.93.169.153", "147.93.171.244"]},
@@ -75,6 +69,16 @@ MACHINES = [
         "id": "node-h", "label": "Backend H",
         "routes": {"newtool": "147.93.169.214", "registration": "147.93.169.214"},
         "egress": {"newtool": ["147.93.169.214", "147.93.169.215"], "registration": ["147.93.169.214", "147.93.169.215"]},
+    },
+    {
+        "id": "node-i", "label": "Backend I",
+        "routes": {"newtool": "217.217.249.229", "registration": "217.217.249.229"},
+        "egress": {"newtool": ["217.217.249.229", "147.93.168.74"], "registration": ["217.217.249.229", "147.93.168.74"]},
+    },
+    {
+        "id": "node-j", "label": "Backend J",
+        "routes": {"newtool": "217.216.58.27", "registration": "217.216.58.27"},
+        "egress": {"newtool": ["217.216.58.27", "147.93.168.146"], "registration": ["217.216.58.27", "147.93.168.146"]},
     },
 ]
 

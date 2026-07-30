@@ -55,7 +55,7 @@ fi
 systemctl daemon-reload
 systemctl enable lb-dashboard
 systemctl restart lb-dashboard
-curl -fsS --retry 5 --retry-delay 1 http://127.0.0.1:9090/health >/dev/null
+curl -fsS --retry 15 --retry-delay 1 --retry-connrefused http://127.0.0.1:9090/health >/dev/null
 if ! nginx -t; then
   cp -a "$RESTORE/automation_v2" "$NGINX_CONFIG"
   echo "NGINX validation failed; original configuration restored." >&2
