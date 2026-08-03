@@ -41,14 +41,13 @@ MACHINES = [
     {
         "id": "node-b", "label": "Backend B",
         "routes": {"newtool": "217.216.78.35", "registration": "217.216.78.35"},
-        "egress": {"newtool": ["217.216.78.35", "147.93.168.221"], "registration": ["217.216.78.35"]},
-        "notes": {"147.93.168.221": "Registration portal check disabled; Newtool2 remains available."},
+        "egress": {"newtool": ["217.216.78.35", "147.93.168.221"], "registration": ["217.216.78.35", "147.93.168.221"]},
     },
     {
         "id": "node-c", "label": "Backend C",
         "routes": {"newtool": "217.216.78.96", "registration": "217.216.78.96"},
-        "egress": {"newtool": ["217.216.78.96", "147.93.171.116"], "registration": ["147.93.171.116"]},
-        "notes": {"217.216.78.96": "Registration OTP calls disabled after repeated portal NetworkError; Newtool2 remains available."},
+        "egress": {"newtool": ["217.216.78.96", "147.93.171.116"], "registration": ["217.216.78.96"]},
+        "notes": {"147.93.171.116": "Registration API currently filtered; Newtool2 remains available."},
     },
     {
         "id": "node-e", "label": "Backend E",

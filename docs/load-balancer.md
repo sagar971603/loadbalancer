@@ -38,7 +38,7 @@ ip_hash;
 
 Do not change the balancing method. Automation V2 stores sessions and WebSocket connections in process memory.
 
-Use exactly one incoming upstream entry per physical machine. Weight that entry by usable outgoing-IP capacity: `weight=2` for a dual-egress machine and `weight=1` for a single-egress machine. Current incoming routes are `.145`, `.35`, `.96`, `.153`, `.101`, `.212`, `.214`, `.229`, and `.27`. Backend B's Registration route is disabled. Backend C uses only `.116` for Registration, so its Registration weight is `1`; `.96` remains available to Newtool2. Every enabled Newtool backend has two verified outgoing IPv4 addresses and equal weight `2`.
+Use exactly one incoming upstream entry per physical machine. Weight that entry by usable outgoing-IP capacity: `weight=2` for a dual-egress machine and `weight=1` for a single-egress machine. Current incoming routes are `.145`, `.35`, `.96`, `.153`, `.101`, `.212`, `.214`, `.229`, and `.27`. Registration currently enables only Backend B (`.35` and `.221`, weight `2`) and Backend C (`.96`, weight `1`). Every enabled Newtool backend still has two outgoing IPv4 addresses and equal weight `2`; the Registration route changes do not affect Newtool.
 
 ## Back up the running load balancer
 

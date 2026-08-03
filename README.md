@@ -61,17 +61,17 @@ Each healthy outgoing Registration IP has five browser-session slots. A dual-IP 
 
 | Backend | Incoming route | Outgoing IPs | Newtool slots | Registration slots |
 |---|---|---|---:|---:|
-| A | `217.217.249.145` | `.145`, `147.93.168.214` | 10 | 10 |
-| B | `217.216.78.35` | `.35`, `147.93.168.221` | 10 | 0 (Registration route disabled) |
-| C | `217.216.78.96` | `.96`, `147.93.171.116` | 10 | 5 (`.96` Registration disabled) |
-| E | `147.93.169.153` | `.153`, `147.93.171.244` | 10 | 10 |
-| F | `147.93.171.101` | `.101`, `147.93.171.245` | 10 | 10 |
-| G | `147.93.169.212` | `.212`, `.213` | 10 | 10 |
-| H | `147.93.169.214` | `.214`, `.215` | 10 | 10 |
-| I | `217.217.249.229` | `.229`, `147.93.168.74` | 10 | 10 |
-| J | `217.216.58.27` | `.27`, `147.93.168.146` | 10 | 10 |
+| A | `217.217.249.145` | `.145`, `147.93.168.214` | 10 | 0 (portal-filtered) |
+| B | `217.216.78.35` | `.35`, `147.93.168.221` | 10 | 10 |
+| C | `217.216.78.96` | `.96`, `147.93.171.116` | 10 | 5 (`.96` only) |
+| E | `147.93.169.153` | `.153`, `147.93.171.244` | 10 | 0 (portal-filtered) |
+| F | `147.93.171.101` | `.101`, `147.93.171.245` | 10 | 0 (portal-filtered) |
+| G | `147.93.169.212` | `.212`, `.213` | 10 | 0 (portal-filtered) |
+| H | `147.93.169.214` | `.214`, `.215` | 10 | 0 (portal-filtered) |
+| I | `217.217.249.229` | `.229`, `147.93.168.74` | 10 | 0 (portal-filtered) |
+| J | `217.216.58.27` | `.27`, `147.93.168.146` | 10 | 0 (portal-filtered) |
 
-Total capacity is 90 simultaneous Newtool sessions and 75 simultaneous Registration sessions. Registration is distributed in proportion to outgoing-IP capacity, and a backend at its limit is skipped until a slot is released.
+Current verified capacity is 90 simultaneous Newtool sessions and 15 simultaneous Registration sessions. Registration uses only the three IPs that returned normal API responses on 2026-08-03; filtered routes remain disabled for new jobs but still accept follow-ups for existing prefixed sessions.
 
 ## Newtool session capacity and waiting
 
