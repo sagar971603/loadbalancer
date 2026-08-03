@@ -199,13 +199,19 @@ def build_status() -> dict:
                     continue
                 index = configured_ips.index(ip)
                 slots = list((route or {}).get("details", {}).get("egress_slots", {}).values())
-                fallback_limit = (route or {}).get("details", {}).get("egress_slots_per_ip", 5)
+                fallback_limit = (route or {}).get("details", {}).get(
+                    "egress_slots_per_ip", 5 if service == "newtool" else 2
+                )
                 slot = slots[index] if index < len(slots) else {"active": None, "limit": fallback_limit}
                 service_status[service] = {
                     "configured": True,
                     "healthy": bool(route and route["healthy"]),
                     "active": slot.get("active"),
                     "limit": int(slot.get("limit", fallback_limit)),
+                    "available": bool(slot.get("available", True)),
+                    "cooldown_seconds": int(slot.get("cooldown_seconds", 0)),
+                    "consecutive_failures": int(slot.get("consecutive_failures", 0)),
+                    "half_open": bool(slot.get("half_open", False)),
                 }
             outgoing.append({
                 "ip": ip,

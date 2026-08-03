@@ -51,9 +51,16 @@ _PROXY_POOL = tuple(
     for proxy in os.getenv("EGRESS_PROXY_POOL", "").split(",")
     if proxy.strip()
 )
-_PROXY_MAX_ACTIVE = int(os.getenv("EGRESS_MAX_ACTIVE", "5"))
+_PROXY_MAX_ACTIVE = int(os.getenv("EGRESS_MAX_ACTIVE", "2"))
 _PROXY_WAIT_SECONDS = float(os.getenv("EGRESS_SLOT_WAIT_SECONDS", "90"))
+_PROXY_FAILURE_THRESHOLD = int(os.getenv("REG_EGRESS_FAILURE_THRESHOLD", "3"))
+_PROXY_COOLDOWN_BASE = float(os.getenv("REG_EGRESS_COOLDOWN_BASE_SECONDS", "1800"))
+_PROXY_COOLDOWN_MAX = float(os.getenv("REG_EGRESS_COOLDOWN_MAX_SECONDS", "21600"))
 _proxy_active = {proxy: 0 for proxy in _PROXY_POOL}
+_proxy_failures = {proxy: 0 for proxy in _PROXY_POOL}
+_proxy_cooldown_until = {proxy: 0.0 for proxy in _PROXY_POOL}
+_proxy_cooldown_level = {proxy: 0 for proxy in _PROXY_POOL}
+_proxy_probe_required = {proxy: False for proxy in _PROXY_POOL}
 _proxy_condition = threading.Condition()
 
 
@@ -63,14 +70,21 @@ def _acquire_proxy():
     deadline = time.monotonic() + _PROXY_WAIT_SECONDS
     with _proxy_condition:
         while True:
-            proxy = min(_PROXY_POOL, key=lambda item: (_proxy_active[item], _PROXY_POOL.index(item)))
-            if _proxy_active[proxy] < _PROXY_MAX_ACTIVE:
+            now = time.monotonic()
+            candidates = [
+                proxy for proxy in _PROXY_POOL
+                if _proxy_cooldown_until[proxy] <= now
+                and _proxy_active[proxy] < (1 if _proxy_probe_required[proxy] else _PROXY_MAX_ACTIVE)
+            ]
+            if candidates:
+                proxy = min(candidates, key=lambda item: (_proxy_active[item], _PROXY_POOL.index(item)))
                 _proxy_active[proxy] += 1
                 return proxy
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise RuntimeError("All outgoing Registration IP slots are busy")
-            _proxy_condition.wait(remaining)
+            cooldowns = [value - now for value in _proxy_cooldown_until.values() if value > now]
+            _proxy_condition.wait(min([remaining, *cooldowns]) if cooldowns else remaining)
 
 
 def _release_proxy(proxy):
@@ -81,10 +95,42 @@ def _release_proxy(proxy):
         _proxy_condition.notify()
 
 
+def _record_proxy_result(proxy, success):
+    if not proxy:
+        return
+    with _proxy_condition:
+        now = time.monotonic()
+        if success:
+            _proxy_failures[proxy] = 0
+            _proxy_cooldown_level[proxy] = 0
+            _proxy_cooldown_until[proxy] = 0.0
+            _proxy_probe_required[proxy] = False
+        elif now >= _proxy_cooldown_until[proxy]:
+            _proxy_failures[proxy] += 1
+            if _proxy_probe_required[proxy] or _proxy_failures[proxy] >= _PROXY_FAILURE_THRESHOLD:
+                _proxy_cooldown_level[proxy] += 1
+                delay = min(
+                    _PROXY_COOLDOWN_BASE * (4 ** (_proxy_cooldown_level[proxy] - 1)),
+                    _PROXY_COOLDOWN_MAX,
+                )
+                _proxy_cooldown_until[proxy] = now + delay
+                _proxy_probe_required[proxy] = True
+                _proxy_failures[proxy] = 0
+        _proxy_condition.notify_all()
+
+
 def proxy_slot_status():
     with _proxy_condition:
+        now = time.monotonic()
         return {
-            proxy: {"active": _proxy_active[proxy], "limit": _PROXY_MAX_ACTIVE}
+            proxy: {
+                "active": _proxy_active[proxy],
+                "limit": _PROXY_MAX_ACTIVE,
+                "available": _proxy_cooldown_until[proxy] <= now,
+                "cooldown_seconds": round(max(0, _proxy_cooldown_until[proxy] - now)),
+                "consecutive_failures": _proxy_failures[proxy],
+                "half_open": _proxy_probe_required[proxy] and _proxy_cooldown_until[proxy] <= now,
+            }
             for proxy in _PROXY_POOL
         }
 
@@ -218,6 +264,15 @@ class EPortalLoginStealth:
         if not self._proxy_released:
             _release_proxy(self.proxy_server)
             self._proxy_released = True
+
+    def record_portal_result(self, success):
+        _record_proxy_result(self.proxy_server, success)
+
+    def portal_available(self):
+        if not self.proxy_server:
+            return True
+        with _proxy_condition:
+            return _proxy_cooldown_until[self.proxy_server] <= time.monotonic()
 
     def login(self):
         try:

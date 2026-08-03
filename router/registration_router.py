@@ -19,12 +19,13 @@ NGINX_CONFIG = Path(os.getenv("REG_ROUTER_NGINX_CONFIG", "/etc/nginx/sites-avail
 QUEUE_TIMEOUT = float(os.getenv("REG_ROUTER_QUEUE_TIMEOUT", "90"))
 FORWARD_TIMEOUT = float(os.getenv("REG_ROUTER_FORWARD_TIMEOUT", "330"))
 BACKEND_COOLDOWN = float(os.getenv("REG_ROUTER_BACKEND_COOLDOWN", "120"))
-SLOTS_PER_WEIGHT = int(os.getenv("REG_ROUTER_SLOTS_PER_WEIGHT", "5"))
+SLOTS_PER_WEIGHT = int(os.getenv("REG_ROUTER_SLOTS_PER_WEIGHT", "2"))
+MAX_INIT_ATTEMPTS = int(os.getenv("REG_ROUTER_MAX_INIT_ATTEMPTS", "2"))
 MAX_BODY = int(os.getenv("REG_ROUTER_MAX_BODY", str(1024 * 1024)))
 MAX_TRACKED_SESSIONS = int(os.getenv("REG_ROUTER_MAX_TRACKED_SESSIONS", "10000"))
 
 # One incoming address per physical machine. NGINX weight is the number of
-# healthy outgoing IPs on that machine, so five slots per IP stays balanced.
+# healthy outgoing IPs on that machine, so two slots per IP stays balanced.
 KNOWN_ENDPOINTS = {
     "217.217.249.145:8002": "a",
     "217.216.78.35:8002": "b",
@@ -94,14 +95,14 @@ def backend_health(endpoint: str) -> tuple[bool, int]:
         connection.close()
 
 
-def choose_backend() -> tuple[str, dict] | None:
+def choose_backend(excluded: set[str] | None = None) -> tuple[str, dict] | None:
     """Reserve the next weighted backend; caller must release PENDING."""
     global TIE_CURSOR
     with LOCK:
         configured = configured_backends()
         candidates = []
         for route, backend in configured.items():
-            if not backend["enabled"]:
+            if not backend["enabled"] or route in (excluded or set()):
                 continue
             if COOLDOWN_UNTIL.get(route, 0) > time.monotonic():
                 continue
@@ -242,14 +243,18 @@ class Handler(BaseHTTPRequestHandler):
             if not self.headers.get("X-API-Key"):
                 return self.send_json(401, {"detail": "Missing API key"})
             deadline = time.monotonic() + QUEUE_TIMEOUT
+            attempted = set()
             while time.monotonic() < deadline:
-                choice = choose_backend()
+                choice = choose_backend(attempted)
                 if choice is None:
                     time.sleep(0.5)
                     continue
                 route, _ = choice
                 if self.forward("POST", body, route, reserved=True, retry_safe_init=True):
                     return
+                attempted.add(route)
+                if len(attempted) >= MAX_INIT_ATTEMPTS:
+                    break
             return self.send_json(503, {"detail": "All Registration IP slots are busy or cooling down; retry shortly"})
         route, stripped = session_route(body)
         return self.forward("POST", stripped, route or LEGACY_BACKEND, reserved=False)

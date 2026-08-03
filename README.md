@@ -55,7 +55,7 @@ Registration passes through the session-aware router on `127.0.0.1:18002`. New `
 
 `ip_hash` must remain enabled for Automation V2. Registration stickiness is handled by the Registration router; do not replace it with direct NGINX round-robin.
 
-Each healthy outgoing Registration IP has five browser-session slots. A dual-IP backend is configured with `weight=2` and therefore receives ten slots; a single healthy-IP backend uses `weight=1` and receives five. Only one incoming address per physical machine belongs in the Registration upstream.
+Each healthy outgoing Registration IP has two browser-session slots. A dual-IP backend is configured with `weight=2` and therefore receives four slots; a single healthy-IP backend uses `weight=1` and receives two. Registration portal calls are paced to one every ten seconds per outgoing IP and transport failures are retried only once. Only one incoming address per physical machine belongs in the Registration upstream.
 
 ## Current nine-machine capacity
 

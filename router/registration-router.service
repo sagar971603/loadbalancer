@@ -9,6 +9,8 @@ User=root
 ExecStart=/usr/bin/python3 /opt/registration-router/registration_router.py
 Restart=always
 RestartSec=2
+Environment="REG_ROUTER_SLOTS_PER_WEIGHT=2"
+Environment="REG_ROUTER_MAX_INIT_ATTEMPTS=2"
 NoNewPrivileges=true
 PrivateTmp=true
 

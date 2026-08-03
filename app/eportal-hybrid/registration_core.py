@@ -30,7 +30,9 @@ CURL_BIN = os.getenv("EP_PORTAL_CURL") or shutil.which("curl") or shutil.which("
 HTTP_TRANSPORT = os.getenv("EP_PORTAL_HTTP_TRANSPORT", "curl_cffi").strip().lower()
 CURL_CFFI_IMPERSONATE = os.getenv("EP_PORTAL_CURL_CFFI_IMPERSONATE", "chrome120")
 PROXY_REQUEST_LOCKS = {}
+PROXY_REQUEST_LAST_AT = {}
 PROXY_REQUEST_LOCKS_GUARD = threading.Lock()
+PORTAL_MIN_INTERVAL_SECONDS = float(os.getenv("REG_EGRESS_MIN_INTERVAL_SECONDS", "10"))
 MONTHS = {
     "JAN": "01", "FEB": "02", "MAR": "03", "APR": "04",
     "MAY": "05", "JUN": "06", "JUL": "07", "AUG": "08",
@@ -42,6 +44,14 @@ def proxy_request_lock(proxy_server):
     key = proxy_server or "direct"
     with PROXY_REQUEST_LOCKS_GUARD:
         return PROXY_REQUEST_LOCKS.setdefault(key, threading.Lock())
+
+
+def pace_portal_request(proxy_server):
+    key = proxy_server or "direct"
+    delay = PORTAL_MIN_INTERVAL_SECONDS - (time.monotonic() - PROXY_REQUEST_LAST_AT.get(key, 0))
+    if delay > 0:
+        time.sleep(delay)
+    PROXY_REQUEST_LAST_AT[key] = time.monotonic()
 
 
 def normalize_dob(user_details):
@@ -246,6 +256,8 @@ class ePortalRegistrationApi:
     def _browser_post(self, url, json_data):
         if not getattr(self.browser_obj, "page", None):
             raise requests.RequestException("Playwright browser page is not available")
+        if hasattr(self.browser_obj, "portal_available") and not self.browser_obj.portal_available():
+            raise requests.RequestException("Registration outgoing IP is cooling down")
 
         self._sync_cookies_to_browser(self.browser_obj)
         request_headers = self._request_headers()
@@ -257,11 +269,13 @@ class ePortalRegistrationApi:
         payload = json.dumps(json_data, separators=(",", ":"))
 
         with self.portal_request_lock:
-            result = self.browser_obj.page.evaluate(
-                """
+            pace_portal_request(getattr(self.browser_obj, "proxy_server", None))
+            try:
+                result = self.browser_obj.page.evaluate(
+                    """
 async ({url, payload, headers}) => {
   let lastError;
-  const retryDelays = [1500, 3000, 6000, 12000];
+  const retryDelays = [10000];
   const maxAttempts = retryDelays.length + 1;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
@@ -283,8 +297,14 @@ async ({url, payload, headers}) => {
   throw lastError;
 }
 """,
-                {"url": url, "payload": payload, "headers": headers},
-            )
+                    {"url": url, "payload": payload, "headers": headers},
+                )
+            except Exception:
+                if hasattr(self.browser_obj, "record_portal_result"):
+                    self.browser_obj.record_portal_result(False)
+                raise
+            if hasattr(self.browser_obj, "record_portal_result"):
+                self.browser_obj.record_portal_result(True)
         if result.get("attempts", 1) > 1:
             logger.warning("Browser fetch recovered on retry")
         response = _CurlResponse(result["status"], _HeaderStore(result.get("headers", [])), result.get("text", ""))

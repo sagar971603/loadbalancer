@@ -114,7 +114,7 @@ class RegistrationResilienceTest(unittest.TestCase):
         self.assertEqual(result.status_code, 200)
         self.assertEqual(result.json(), {"ok": True})
         self.assertEqual(len(page.calls), 1)
-        self.assertIn("const retryDelays = [1500, 3000, 6000, 12000]", page.calls[0][0])
+        self.assertIn("const retryDelays = [10000]", page.calls[0][0])
         self.assertIn("Browser fetch recovered on retry", captured.output[0])
 
     def test_browser_transport_lock_is_shared_per_proxy(self):

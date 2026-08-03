@@ -18,7 +18,7 @@ class RouterTest(unittest.TestCase):
 }\n""")
             with patch.object(router, "NGINX_CONFIG", config):
                 backends = router.configured_backends()
-            self.assertEqual(backends["a"]["capacity"], 10)
+            self.assertEqual(backends["a"]["capacity"], 4)
             self.assertFalse(backends["b"]["enabled"])
             self.assertIn("n192-0-2-10", backends)
 
@@ -43,11 +43,11 @@ class RouterTest(unittest.TestCase):
 
     def test_weighted_round_robin_survives_fast_failures(self):
         backends = {
-            "a": {"endpoint": "a:8002", "capacity": 10, "enabled": True},
-            "c": {"endpoint": "c:8002", "capacity": 5, "enabled": True},
-            "d": {"endpoint": "d:8002", "capacity": 5, "enabled": True},
-            "e": {"endpoint": "e:8002", "capacity": 10, "enabled": True},
-            "f": {"endpoint": "f:8002", "capacity": 10, "enabled": True},
+            "a": {"endpoint": "a:8002", "capacity": 4, "enabled": True},
+            "c": {"endpoint": "c:8002", "capacity": 2, "enabled": True},
+            "d": {"endpoint": "d:8002", "capacity": 2, "enabled": True},
+            "e": {"endpoint": "e:8002", "capacity": 4, "enabled": True},
+            "f": {"endpoint": "f:8002", "capacity": 4, "enabled": True},
         }
         router.TIE_CURSOR = 0
         router.PENDING.clear()
@@ -76,6 +76,20 @@ class RouterTest(unittest.TestCase):
             route, _ = router.choose_backend()
         router.release_backend(route)
         router.COOLDOWN_UNTIL.clear()
+        self.assertEqual(route, "c")
+
+    def test_failed_backend_is_not_selected_again_for_same_init(self):
+        backends = {
+            "a": {"endpoint": "a:8002", "capacity": 2, "enabled": True},
+            "c": {"endpoint": "c:8002", "capacity": 2, "enabled": True},
+        }
+        router.TIE_CURSOR = 0
+        router.PENDING.clear()
+        router.COOLDOWN_UNTIL.clear()
+        with patch.object(router, "configured_backends", return_value=backends), \
+             patch.object(router, "backend_health", return_value=(True, 0)):
+            route, _ = router.choose_backend({"a"})
+        router.release_backend(route)
         self.assertEqual(route, "c")
 
     def test_only_safe_step_one_network_error_is_retried(self):

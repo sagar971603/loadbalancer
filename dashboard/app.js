@@ -30,7 +30,10 @@ function detail(row) {
 function egressCell(status) {
   if (!status.configured) return '<span class="pill disabled">Not used</span>';
   const active = status.active === null ? '?' : status.active;
-  return `<span class="pill ${status.healthy ? 'healthy' : 'unhealthy'}">${status.healthy ? 'Live' : 'Attention'}</span><div class="slot-count"><strong>${active}</strong> / ${status.limit} active</div>`;
+  const live = status.healthy && status.available;
+  const label = status.cooldown_seconds ? `Cooling ${status.cooldown_seconds}s` : status.half_open ? 'Recovery probe' : live ? 'Live' : 'Attention';
+  const failures = status.consecutive_failures ? ` &middot; ${status.consecutive_failures} network failures` : '';
+  return `<span class="pill ${live ? 'healthy' : 'unhealthy'}">${label}</span><div class="slot-count"><strong>${active}</strong> / ${status.limit} active${failures}</div>`;
 }
 
 function render(data) {
