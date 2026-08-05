@@ -78,6 +78,24 @@ def _next_proxy() -> Optional[str]:
         return proxy
 
 
+def _blocking_itr_errors(errors: Any) -> List[Any]:
+    """Return ITR validation errors except portal advisory categories B and D."""
+    if not isinstance(errors, list):
+        return [errors] if errors else []
+    ignored_categories = {"B", "D"}
+    blocking = []
+    for error in errors:
+        if isinstance(error, dict):
+            category = next(
+                (error.get(key) for key in ("errCtg", "cat", "category", "errCat") if error.get(key)),
+                "",
+            )
+            if str(category).strip().upper() in ignored_categories:
+                continue
+        blocking.append(error)
+    return blocking
+
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
@@ -2868,7 +2886,7 @@ class EPortalClient:
                 }
             
             messages = data.get('messages', [])
-            errors = data.get('errors', [])
+            errors = _blocking_itr_errors(data.get('errors', []))
             response_code = data.get('responseCode')
             arn_number = data.get('arnNumber')
             transaction_no = data.get('transactionNo')
