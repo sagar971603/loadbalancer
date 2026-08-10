@@ -98,7 +98,8 @@ class WebSocketMessage(BaseModel):
             "check_aadhaar", "send_otp", "revise_filing", "download_itr", "filling",
             "forgot_password_rerequest_otp", "everify_otp_verify", "get_all_challans", "get_challan_details",
             "get_bank_accounts", "submit_itr_form", "get_itr_receipt",
-            "pan_link", "pan_link_continue","generate_pan_link_otp","verify_pan_link_otp","pay_advance_tax","prevalidate_bank","prevalidate_bank_continue"
+            "pan_link", "pan_link_continue","generate_pan_link_otp","verify_pan_link_otp","pay_advance_tax","prevalidate_bank","prevalidate_bank_continue",
+            "refund_reissue_init", "refund_reissue_send_otp", "refund_reissue_submit", "refund_reissue_status"
         ]
         if v not in allowed_actions:
             raise ValueError(f"Invalid action. Must be one of: {', '.join(allowed_actions)}")
@@ -1260,7 +1261,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 # AUTHENTICATED ACTIONS (Require Login Session)
                 # ========================================================
                 elif action in ["prefill", "itr_status", "active_filings", "check_aadhaar",
-                               "send_otp", "revise_filing", "download_itr","e_verify_active_filings","filling","everify_otp_verify","get_all_challans","get_challan_details","get_bank_accounts", "submit_itr_form", "get_itr_receipt","pay_advance_tax","prevalidate_bank","prevalidate_bank_continue"]:
+                               "send_otp", "revise_filing", "download_itr","e_verify_active_filings","filling","everify_otp_verify","get_all_challans","get_challan_details","get_bank_accounts", "submit_itr_form", "get_itr_receipt","pay_advance_tax","prevalidate_bank","prevalidate_bank_continue",
+                               "refund_reissue_init", "refund_reissue_send_otp", "refund_reissue_submit", "refund_reissue_status"]:
 
                     if not session_id:
                         await websocket.send_json({
@@ -1320,6 +1322,46 @@ async def websocket_endpoint(websocket: WebSocket):
 
                         elif action == "get_bank_accounts":
                             result = await asyncio.to_thread(client.get_bank_accounts, pan=pan)
+
+                        elif action == "refund_reissue_init":
+                            result = await asyncio.to_thread(client.initialize_refund_reissue, pan=pan)
+
+                        elif action == "refund_reissue_send_otp":
+                            ack_num = payload.get("ack_num") or payload.get("acknowledgment_number")
+                            if not ack_num:
+                                await websocket.send_json({
+                                    "type": "error",
+                                    "action": action,
+                                    "error": "Missing ack_num parameter"
+                                })
+                                continue
+                            result = await asyncio.to_thread(
+                                client.send_refund_reissue_otp,
+                                pan=pan,
+                                ack_num=ack_num,
+                                bank_account_number=payload.get("bank_account_number"),
+                                assessment_year=payload.get("assessment_year") or payload.get("year"),
+                                representative_email=payload.get("representative_email"),
+                            )
+
+                        elif action == "refund_reissue_submit":
+                            otp = payload.get("otp")
+                            if not otp:
+                                await websocket.send_json({
+                                    "type": "error",
+                                    "action": action,
+                                    "error": "Missing otp parameter"
+                                })
+                                continue
+                            result = await asyncio.to_thread(
+                                client.complete_refund_reissue,
+                                pan=pan,
+                                otp=otp,
+                                representative_email=payload.get("representative_email"),
+                            )
+
+                        elif action == "refund_reissue_status":
+                            result = await asyncio.to_thread(client.get_refund_reissue_requests, pan=pan)
 
                         #==========================================================
                         # Prevalidate Bank Account Action

@@ -191,6 +191,8 @@ class EPortalConfig:
     dsc_config_endpoint: str = "/iec/dscservices/auth/saveEntity"
     verification_endpoint_save:str ="/iec/verificationservices/auth/saveEntity"
     everify_otp_validate_endpoint: str = "/iec/verificationservices/auth/validateOTP"
+    return_services_get_endpoint: str = "/iec/returnservicesapi/auth/getEntity"
+    return_services_save_endpoint: str = "/iec/returnservicesapi/auth/saveEntity"
     challan_history_endpoint: str = "/iec/paymentapi/auth/challan/paymenthistory"
     challan_download_endpoint: str = "/iec/paymentapi/auth/challan/paymentdetails"
     aes_redirection_endpoint : str = "/iec/utilityservicesapi/auth/v0.1/redirectionView26AS" 
@@ -333,6 +335,7 @@ class EPortalClient:
         self.active_fillings: List[Dict[str, Any]] = []
 
         self.aadhaar_transaction_id: Optional[str] = None
+        self.refund_reissue_context: Optional[Dict[str, Any]] = None
 
         self.payments: List[Dict[str, Any]] = []
 
@@ -2822,6 +2825,363 @@ class EPortalClient:
         
 
 
+
+    @staticmethod
+    def _refund_value(source: Dict[str, Any], *names: str) -> Any:
+        if not isinstance(source, dict):
+            return None
+        for name in names:
+            value = source.get(name)
+            if value not in (None, ""):
+                return value
+        return None
+
+    @staticmethod
+    def _refund_mask(value: Any, keep_start: int = 2, keep_end: int = 2) -> Optional[str]:
+        if value is None:
+            return None
+        value = str(value)
+        if len(value) <= keep_start + keep_end:
+            return "*" * len(value)
+        return value[:keep_start] + "*" * (len(value) - keep_start - keep_end) + value[-keep_end:]
+
+    def _refund_trace(self, step: str, event: str = "INFO", **details: Any) -> None:
+        level = logging.ERROR if event.upper() in ("ERROR", "FAILED") else logging.INFO
+        logger.log(
+            level,
+            "[REFUND_REISSUE] step=%s event=%s details=%s",
+            step,
+            event.upper(),
+            json.dumps(details, default=str, separators=(",", ":")),
+        )
+
+    def _refund_post(self, endpoint: str, payload: Dict[str, Any], success_message: str) -> Dict[str, Any]:
+        service_name = payload.get("serviceName", "")
+        self._refund_trace(
+            "portal_request",
+            "START",
+            endpoint=endpoint,
+            service=service_name,
+            pan=self._refund_mask(payload.get("userId") or payload.get("entityNum") or payload.get("verifPan")),
+            ack_num=self._refund_mask(payload.get("ackNum")),
+        )
+        try:
+            response = self._safe_post(
+                self.config.base_url + endpoint,
+                json_data=payload,
+                sn=service_name,
+            )
+            data, json_err = self._safe_parse_json(response)
+            if json_err:
+                self._refund_trace(
+                    "portal_response",
+                    "FAILED",
+                    service=service_name,
+                    status_code=getattr(response, "status_code", None),
+                    error=json_err,
+                )
+                return {
+                    "success": False,
+                    "data": None,
+                    "error": json_err,
+                    "message": json_err,
+                    "status_code": getattr(response, "status_code", None),
+                }
+
+            messages = data.get("messages", []) if isinstance(data, dict) else []
+            errors = []
+            for message in messages if isinstance(messages, list) else []:
+                if not isinstance(message, dict) or message.get("code") in (MessageCode.SUCCESS.value, "EF40003"):
+                    continue
+                severity = str(message.get("type") or message.get("severity") or "").upper()
+                if severity in ("ERROR", "E", "FAILURE", "FAILED"):
+                    errors.append(str(message.get("desc") or message.get("description") or message.get("message") or message.get("code")))
+            if isinstance(data, dict):
+                portal_errors = data.get("errors")
+                if portal_errors:
+                    if not isinstance(portal_errors, list):
+                        portal_errors = [portal_errors]
+                    for error in portal_errors:
+                        if isinstance(error, dict):
+                            errors.append(str(error.get("desc") or error.get("description") or error.get("message") or error))
+                        else:
+                            errors.append(str(error))
+                if data.get("success") is False:
+                    errors.append(str(data.get("error") or data.get("message") or "Portal request failed"))
+
+            success = getattr(response, "status_code", None) == 200 and not errors
+            error_text = "; ".join(dict.fromkeys(errors)) if errors else None
+            self._refund_trace(
+                "portal_response",
+                "COMPLETE" if success else "FAILED",
+                service=service_name,
+                success=success,
+                status_code=getattr(response, "status_code", None),
+                error=error_text,
+            )
+            return {
+                "success": success,
+                "data": data,
+                "message": success_message if success else "Refund reissue request failed",
+                "error": error_text,
+                "messages": messages,
+                "status_code": getattr(response, "status_code", None),
+            }
+        except Exception as exc:
+            logger.error("Refund reissue request failed: %s", exc)
+            self._refund_trace(
+                "portal_request",
+                "ERROR",
+                service=service_name,
+                exception_type=type(exc).__name__,
+                error=str(exc),
+            )
+            return {"success": False, "data": None, "error": str(exc), "message": str(exc)}
+
+    def get_refund_failures(self, pan: str) -> Dict[str, Any]:
+        return self._refund_post(self.config.return_services_get_endpoint, {
+            "serviceName": "createRefundDetails",
+            "userId": pan,
+            "header": {"formName": "FO-021-SEREQ"},
+        }, "Refund failure details retrieved successfully")
+
+    def get_refund_bank_accounts(self, pan: str) -> Dict[str, Any]:
+        return self._refund_post(self.config.return_services_get_endpoint, {
+            "entityNum": pan,
+            "entityType": "P",
+            "header": {"formName": "FO-021-SEREQ"},
+            "serviceName": "fetchBankDetailsService",
+        }, "Refund bank details retrieved successfully")
+
+    def prepare_refund_verification(
+        self,
+        pan: str,
+        ack_num: str,
+        unique_req_id: str,
+        wf_task_id: Any,
+    ) -> Dict[str, Any]:
+        return self._refund_post(self.config.return_services_get_endpoint, {
+            "serviceName": "dscVerification",
+            "entityNum": pan,
+            "ackNum": ack_num,
+            "uniqueReqId": unique_req_id,
+            "wfTaskId": wf_task_id,
+            "header": {"formName": "FO-021-SEREQ"},
+        }, "Refund verification prepared successfully")
+
+    def verify_refund_dsc(
+        self,
+        pan: str,
+        ack_num: str,
+        form_data: Any,
+        assessment_year: str,
+        dsc_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if not isinstance(form_data, str):
+            form_data = json.dumps(form_data, separators=(",", ":"))
+        return self._refund_post(self.config.verification_endpoint, {
+            "serviceName": "verifyDsc",
+            "entityNum": pan,
+            "formData": json.dumps(form_data),
+            "returnUrl": "/dashboard/refund-reissue/refund-submit",
+            "dscId": dsc_id or ack_num,
+            "verifPan": pan,
+            "formCd": "RR",
+            "assessmntYr": str(assessment_year),
+        }, "Refund DSC verification initialized successfully")
+
+    def validate_refund_aadhaar_otp(
+        self,
+        pan: str,
+        otp: str,
+        ack_num: str,
+        assessment_year: str,
+        aadhaar_txn_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        transaction_id = aadhaar_txn_id or getattr(self, "adhar_transaction_id", None) or self.aadhaar_transaction_id
+        if not transaction_id:
+            return {"success": False, "error": "Missing Aadhaar transaction ID", "message": "Send the Aadhaar OTP first"}
+        return self._refund_post(self.config.everify_otp_validate_endpoint, {
+            "serviceName": "verifyOtpUsingAadhar",
+            "verifPan": pan,
+            "otp": str(otp),
+            "assessmntYr": str(assessment_year),
+            "ackNum": ack_num,
+            "moduleCode": "NON-ITR",
+            "otpGenerationSource": "EFL",
+            "selectionFlag": "N",
+            "formCd": "RR",
+            "aadhaarTxnId": transaction_id,
+            "preLoginFlag": "N",
+            "header": {"formName": "FO-091-EVERI"},
+            "loggedInUserId": pan,
+        }, "Aadhaar OTP verified successfully")
+
+    def submit_refund_reissue(
+        self,
+        pan: str,
+        workflow: Dict[str, Any],
+        bank: Dict[str, Any],
+        representative_email: Optional[str],
+        assessment_year: str,
+    ) -> Dict[str, Any]:
+        value = self._refund_value
+        payload = {
+            "serviceName": "createRefundDetails",
+            "assmentYear": str(assessment_year),
+            "userId": pan,
+            "processId": value(workflow, "processId"),
+            "ackNum": value(workflow, "ackNum", "acknowledgementNumber"),
+            "refNo": value(workflow, "refNo", "referenceNumber", "ackNum", "acknowledgementNumber"),
+            "ackDate": value(workflow, "ackDate", "acknowledgementDate"),
+            "reasonForRefundFailure": value(workflow, "reasonForRefundFailure", "refundFailureReason"),
+            "everifyFlag": "Y",
+            "returnType": value(workflow, "returnType"),
+            "repEmailId": representative_email or value(workflow, "repEmailId"),
+            "wfTaskId": value(workflow, "wfTaskId"),
+            "comRefNum": value(workflow, "comRefNum"),
+            "bankDetails": [{
+                "bankName": value(bank, "bankName"),
+                "bankAcctNum": value(bank, "bankAcctNum", "accountNumber", "bankAccountNumber"),
+                "ifscCd": value(bank, "ifscCd", "ifscCode"),
+                "status": "V",
+                "accountType": value(bank, "accountType", "acctType"),
+                "accountHolderType": value(bank, "accountHolderType", "acctHolderType"),
+                "bankPanLinkingId": value(bank, "bankPanLinkingId"),
+            }],
+            "header": {"formName": "FO-021-SEREQ"},
+        }
+        return self._refund_post(
+            self.config.return_services_save_endpoint,
+            payload,
+            "Refund reissue request submitted successfully",
+        )
+
+    def get_refund_reissue_requests(self, pan: str) -> Dict[str, Any]:
+        return self._refund_post(self.config.return_services_get_endpoint, {
+            "serviceName": "fetchRefundReissueService",
+            "userId": pan,
+            "categoryCd": "RR",
+            "header": {"formName": "FO-021-SEREQ"},
+        }, "Refund reissue requests retrieved successfully")
+
+    @staticmethod
+    def _refund_list(data: Any, *keys: str) -> List[Dict[str, Any]]:
+        if isinstance(data, list):
+            return data
+        if not isinstance(data, dict):
+            return []
+        for key in keys:
+            if isinstance(data.get(key), list):
+                return data[key]
+        nested = data.get("data")
+        return EPortalClient._refund_list(nested, *keys) if nested is not data else []
+
+    def initialize_refund_reissue(self, pan: str) -> Dict[str, Any]:
+        self._refund_trace("initialize", "START", pan=self._refund_mask(pan))
+        failures = self.get_refund_failures(pan)
+        if not failures.get("success"):
+            return failures
+        banks = self.get_refund_bank_accounts(pan)
+        if not banks.get("success"):
+            return banks
+        workflows = self._refund_list(failures.get("data"), "workflowDetails", "refundDetails")
+        bank_details = self._refund_list(banks.get("data"), "bankDetails", "activeBank")
+        eligible = [
+            bank for bank in bank_details
+            if str(bank.get("statusCd", bank.get("status", "V"))).upper() == "V"
+            and str(bank.get("refundFlag", "Y")).upper() == "Y"
+        ]
+        self._refund_trace("initialize", "COMPLETE", workflow_count=len(workflows), eligible_bank_count=len(eligible))
+        return {
+            "success": True,
+            "data": {"workflowDetails": workflows, "eligible_bank_details": eligible},
+            "message": "Refund reissue details initialized successfully",
+        }
+
+    def send_refund_reissue_otp(
+        self,
+        pan: str,
+        ack_num: str,
+        bank_account_number: Optional[str] = None,
+        assessment_year: Optional[str] = None,
+        representative_email: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        initialized = self.initialize_refund_reissue(pan)
+        if not initialized.get("success"):
+            return initialized
+        data = initialized["data"]
+        workflow = next((
+            item for item in data["workflowDetails"]
+            if str(self._refund_value(item, "ackNum", "acknowledgementNumber")) == str(ack_num)
+        ), None)
+        if not workflow:
+            return {"success": False, "error": "Refund acknowledgement not found", "message": "Refund acknowledgement not found"}
+        bank = next((
+            item for item in data["eligible_bank_details"]
+            if not bank_account_number
+            or str(self._refund_value(item, "bankAcctNum", "accountNumber", "bankAccountNumber")) == str(bank_account_number)
+        ), None)
+        if not bank:
+            return {"success": False, "error": "Eligible refund bank account not found", "message": "Eligible refund bank account not found"}
+        year = str(assessment_year or self._refund_value(workflow, "assmentYear", "assessmentYear", "assessmntYr") or "")
+        if not year:
+            return {"success": False, "error": "Assessment year is required", "message": "Assessment year is required"}
+
+        aadhaar_check = self.check_aadhaar_linked(pan)
+        if not aadhaar_check.get("success"):
+            return aadhaar_check
+        otp_result = self.send_otp_aadhaar(pan)
+        if not otp_result.get("success"):
+            return otp_result
+        transaction_id = otp_result.get("aadhaar_transaction_id") or getattr(self, "adhar_transaction_id", None) or self.aadhaar_transaction_id
+        self.refund_reissue_context = {
+            "pan": pan,
+            "workflow": workflow,
+            "bank": bank,
+            "assessment_year": year,
+            "ack_num": str(ack_num),
+            "aadhaar_transaction_id": transaction_id,
+            "representative_email": representative_email,
+        }
+        return {
+            "success": True,
+            "data": {"ack_num": ack_num, "assessment_year": year, "aadhaar_transaction_id": transaction_id},
+            "message": "Aadhaar OTP sent for refund reissue verification",
+        }
+
+    def complete_refund_reissue(
+        self,
+        pan: str,
+        otp: str,
+        representative_email: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        context = self.refund_reissue_context
+        if not context or context.get("pan") != pan:
+            return {
+                "success": False,
+                "error": "No pending refund reissue verification",
+                "message": "Send the refund reissue OTP first",
+            }
+        verified = self.validate_refund_aadhaar_otp(
+            pan,
+            otp,
+            context["ack_num"],
+            context["assessment_year"],
+            context.get("aadhaar_transaction_id"),
+        )
+        if not verified.get("success"):
+            return verified
+        result = self.submit_refund_reissue(
+            pan,
+            context["workflow"],
+            context["bank"],
+            representative_email or context.get("representative_email"),
+            context["assessment_year"],
+        )
+        if result.get("success"):
+            self.refund_reissue_context = None
+        return result
 
     def validate_itr_form(self,pan,json_data,itr_type,year,it_sec_cd,filling_type,mode,stringify=False) -> Dict[str, Any]:
         """Validate ITR form for a given PAN and assessment year.
