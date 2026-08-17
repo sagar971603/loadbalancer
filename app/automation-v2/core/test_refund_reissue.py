@@ -18,7 +18,8 @@ class RefundReissueTests(unittest.TestCase):
             "success": True,
             "data": {"bankDetails": [
                 {"bankAcctNum": "1", "statusCd": "V", "refundFlag": "Y"},
-                {"bankAcctNum": "2", "statusCd": "I", "refundFlag": "Y"},
+                {"bankAcctNum": "2", "statusCd": "A", "refundFlag": "Y"},
+                {"bankAcctNum": "3", "statusCd": "I", "refundFlag": "Y"},
             ]},
         }
 
@@ -26,7 +27,8 @@ class RefundReissueTests(unittest.TestCase):
 
         self.assertTrue(result["success"])
         self.assertEqual(result["data"]["eligible_bank_details"], [
-            {"bankAcctNum": "1", "statusCd": "V", "refundFlag": "Y"}
+            {"bankAcctNum": "1", "statusCd": "V", "refundFlag": "Y"},
+            {"bankAcctNum": "2", "statusCd": "A", "refundFlag": "Y"},
         ])
 
     def test_send_and_complete_keeps_context_until_success(self):

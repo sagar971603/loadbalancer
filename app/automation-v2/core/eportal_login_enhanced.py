@@ -3089,7 +3089,7 @@ class EPortalClient:
         bank_details = self._refund_list(banks.get("data"), "bankDetails", "activeBank")
         eligible = [
             bank for bank in bank_details
-            if str(bank.get("statusCd", bank.get("status", "V"))).upper() == "V"
+            if str(bank.get("statusCd", bank.get("status", "V"))).upper() in {"V", "A"}
             and str(bank.get("refundFlag", "Y")).upper() == "Y"
         ]
         self._refund_trace("initialize", "COMPLETE", workflow_count=len(workflows), eligible_bank_count=len(eligible))
