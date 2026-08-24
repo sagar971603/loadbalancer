@@ -19,6 +19,7 @@ import asyncio
 from datetime import datetime, timedelta
 import secrets
 import hashlib
+import re
 from contextlib import asynccontextmanager
 import os
 from dotenv import load_dotenv
@@ -75,6 +76,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def valid_pan_aadhaar(pan: str, aadhaar_number: str) -> bool:
+    return bool(
+        re.fullmatch(r"[A-Z]{5}[0-9]{4}[A-Z]", pan)
+        and re.fullmatch(r"[2-9][0-9]{11}", aadhaar_number)
+    )
+
 # ============================================================================
 # Pydantic Models
 # ============================================================================
@@ -95,7 +103,7 @@ class WebSocketMessage(BaseModel):
             "forgot_password_init", "forgot_password_verify",
             "prefill", "itr_status", "active_filings",
             "e_verify_active_filings",
-            "check_aadhaar", "send_otp", "revise_filing", "download_itr", "filling",
+            "check_aadhaar", "check_aadhaar_status", "send_otp", "revise_filing", "download_itr", "filling",
             "forgot_password_rerequest_otp", "everify_otp_verify", "get_all_challans", "get_challan_details",
             "get_bank_accounts", "submit_itr_form", "get_itr_receipt",
             "pan_link", "pan_link_continue","generate_pan_link_otp","verify_pan_link_otp","pay_advance_tax","prevalidate_bank","prevalidate_bank_continue",
@@ -622,6 +630,72 @@ async def websocket_endpoint(websocket: WebSocket):
                             "action": action,
                             "error": "No active session to logout"
                         })
+
+                # ========================================================
+                # CHECK AADHAAR STATUS (API authentication only)
+                # ========================================================
+                elif action == "check_aadhaar_status":
+                    pan = str(payload.get("pan", "")).upper().strip()
+                    aadhaar_number = str(payload.get("aadhaar_number", "")).strip()
+                    if not valid_pan_aadhaar(pan, aadhaar_number):
+                        await websocket.send_json({
+                            "type": "error",
+                            "action": action,
+                            "error": "Provide a valid PAN and 12-digit Aadhaar number",
+                        })
+                        continue
+
+                    lease = egress_slot_pool.try_acquire(f"{connection_id}:aadhaar-status")
+                    if not lease:
+                        try:
+                            lease = await egress_slot_pool.acquire(
+                                f"{connection_id}:aadhaar-status",
+                                timeout=EGRESS_QUEUE_TIMEOUT_SECONDS,
+                            )
+                        except TimeoutError as exc:
+                            await websocket.send_json({
+                                "type": "response",
+                                "action": action,
+                                "success": False,
+                                "error": str(exc),
+                                "queued": True,
+                            })
+                            continue
+
+                    client = None
+                    try:
+                        client = EPortalClient(
+                            {"PAN": pan, "PASSWORD": "prelogin"},
+                            proxy_url=lease.proxy_url,
+                        )
+                        result = await asyncio.to_thread(
+                            client.aadhar_pan_linkage,
+                            pan=pan,
+                            aadhaar_number=aadhaar_number,
+                        )
+                        await websocket.send_json({
+                            "type": "response",
+                            "action": action,
+                            "success": result.get("success", False),
+                            "data": result,
+                        })
+                    except Exception as exc:
+                        logger.error("check_aadhaar_status failed: %s", exc, exc_info=True)
+                        await websocket.send_json({
+                            "type": "error",
+                            "action": action,
+                            "error": f"Failed to check Aadhaar status: {exc}",
+                        })
+                    finally:
+                        if client:
+                            for session_name in ("session", "ais_session"):
+                                session = getattr(client, session_name, None)
+                                if session:
+                                    try:
+                                        session.close()
+                                    except Exception:
+                                        logger.warning("Failed to close temporary %s", session_name)
+                        lease.release()
 
                 # ========================================================
                 # FORGOT PASSWORD INIT ACTION
