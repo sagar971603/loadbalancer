@@ -4212,7 +4212,7 @@ class EPortalClient:
                 }
 
             # ensure assessment year is in "YYYY-YY" format using current and next year (e.g., "2026-27")
-            current_year = datetime.utcnow().year
+            current_year = datetime.now().year
             assessment_year = assessment_year or f"{current_year}-{str(current_year + 1)[-2:]}"
 
             payload = {
@@ -4228,7 +4228,8 @@ class EPortalClient:
                     "minorHead": minor_head,
                     "surCharge": 0,
                     "totalAmt": amount,
-                    "assmentYear": assessment_year,
+                    "taxYear": str(assessment_year),
+                    "actType": "N",
                     "totalAmtWord": total_amt_word or f"INR {amount}",
                     "bankCode": bank_code,
                     "basicTax": 0,
