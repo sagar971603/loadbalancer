@@ -564,4 +564,3 @@ Do not log the API key, portal password, Aadhaar number, OTP, session IDs, cooki
 - On socket close, discard its session IDs and restart the affected flow.
 - Base64-decode `pdf_base64` for ITR receipts.
 - Do not use `generate_pan_link_otp` until its backend handler is corrected and tested.
-
