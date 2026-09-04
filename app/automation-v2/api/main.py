@@ -1187,6 +1187,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "action": action,
                                 "error": "Missing name -enter name as per aadhaar for generating OTP"
                             })
+                            continue
 
                         if not pl_session_id:
                             await websocket.send_json({
@@ -1234,6 +1235,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         otp_result = await asyncio.to_thread(
                             client.generate_pan_link_otp,
                             aadhar_no=pl_session.get("aadhaar_number"),
+                            name=name,
                             pan=pl_session.get("pan"),
                             mobile=pl_session.get("mobile"),
                         )
@@ -1295,7 +1297,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "error": "No client found in PAN link session. Run pan_link again."
                             })
                             continue
-                        validate_result = await asyncio.to_thread(client.validate_pan_link_otp, otp=otp)
+                        validate_result = await asyncio.to_thread(client.vaildate_adhar_pan_link_otp, otp=otp)
                         if not validate_result.get("success"):
                             await websocket.send_json({
                                 "type": "response",
