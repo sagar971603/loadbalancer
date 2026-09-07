@@ -5569,28 +5569,14 @@ class EPortalClient:
 
 
     def vaildate_adhar_pan_link_otp(self, otp: str) -> Dict[str, Any]:
-        """Validate OTP for Aadhaar-PAN linkage.
-        
-        Args:
-            otp: The OTP received on the registered mobile number
-
-        Returns:
-            Dict with:
-                - success: bool
-                - data: dict (response data)
-                - error: str (error message if failed)
-                - message: str (description)    
-        """
+        """Validate OTP for Aadhaar-PAN linkage and save the linkage request."""
         try:
             url = "https://eportal.incometax.gov.in/iec/servicesapi/validateOTP"
 
             payload = {
-                "userId": getattr(self, "panuserid", None),
+                "userId": getattr(self, "adhar_pan_link_pan", None),
                 "serviceName": "linkAadharOtpService",
-                "mobileNum": getattr(self, "adhar_pan_link_mobile", None),
-                "areaCd": getattr(self, "adhar_pan_link_area_cd", "91"),
-                "countryCd": getattr(self, "adhar_pan_link_country_cd", "IN"),
-                "otp": otp,
+                "otpValue": otp,
             }
 
             if not payload["userId"]:
@@ -5603,7 +5589,6 @@ class EPortalClient:
             response = self._safe_post(url, json_data=payload, sn="linkAadharOtpService")
             data, json_err = self._safe_parse_json(response)
             if json_err:
-                logger.error(f"vaildate_adhar_pan_link_otp JSON parse error: {json_err}")
                 return {
                     "success": False,
                     "error": json_err,
@@ -5611,29 +5596,28 @@ class EPortalClient:
                     "status_code": getattr(response, "status_code", None),
                 }
 
-            messages = data.get("messages", [])
-            errors = data.get("errors", [])
-            result = data.get("result", "")
-            error_remarks = data.get("errorRemarks", "")
+            messages = data.get("messages", []) if isinstance(data, dict) else []
+            errors = data.get("errors", []) if isinstance(data, dict) else []
+            result = data.get("result", "") if isinstance(data, dict) else ""
+            error_remarks = data.get("errorRemarks", "") if isinstance(data, dict) else ""
 
-            # Success: result should NOT be "OTP INCORRECT" and no error messages
             has_success = (
                 "otp incorrect" not in result.lower()
-                and not any(msg.get("code") == "EF40088" for msg in messages)
+                and not any(msg.get("code") == "EF40088" for msg in messages if isinstance(msg, dict))
                 and not errors
                 and response.status_code == 200
             )
 
-            error_messages = []
             if not has_success:
-                # Use errorRemarks if present
+                error_messages = []
                 if error_remarks:
                     error_messages.append(error_remarks)
                 else:
                     for msg in messages:
-                        desc = msg.get("desc") or msg.get("description") or msg.get("message", "")
-                        if desc:
-                            error_messages.append(desc)
+                        if isinstance(msg, dict):
+                            desc = msg.get("desc") or msg.get("description") or msg.get("message", "")
+                            if desc:
+                                error_messages.append(desc)
                     for err in errors:
                         if isinstance(err, dict):
                             desc = err.get("desc") or err.get("description") or err.get("message", "")
@@ -5642,17 +5626,106 @@ class EPortalClient:
                         elif isinstance(err, str):
                             error_messages.append(err)
 
-            error_text = "; ".join(error_messages) if error_messages else None
+                error_text = "; ".join(error_messages) if error_messages else "OTP validation failed"
+                return {
+                    "success": False,
+                    "data": data,
+                    "result": result,
+                    "message": error_text,
+                    "error": error_text,
+                    "messages": messages,
+                    "errors": errors,
+                    "status_code": response.status_code,
+                }
+
+            save_payload = {
+                "mobileNum": getattr(self, "adhar_pan_link_mobile", ""),
+                "areaCd": getattr(self, "adhar_pan_link_area_cd", "91"),
+                "countryCd": getattr(self, "adhar_pan_link_country_cd", "IN"),
+                "preLoginFlag": "Y",
+                "aadhaarNumber": getattr(self, "adhar_pan_link_aadhaar", ""),
+                "nameAsOnAadhaarCard": getattr(self, "adhar_pan_link_name", ""),
+                "pan": getattr(self, "adhar_pan_link_pan", ""),
+                "aadhaarYobFlag": "Y",
+                "serviceName": "linkAadhaarPreLoginService",
+                "createdBy": "linkAadhaarValidationService",
+                "updatedBy": "linkAadhaarValidationService",
+                "createdByUser": getattr(self, "adhar_pan_link_pan", ""),
+                "updatedByUser": getattr(self, "adhar_pan_link_pan", ""),
+            }
+
+            save_url = "https://eportal.incometax.gov.in/iec/servicesapi/saveEntity"
+            save_response = self._safe_post(
+                save_url,
+                json_data=save_payload,
+                sn="linkAadhaarPreLoginService",
+            )
+            save_data, save_err = self._safe_parse_json(save_response)
+            if save_err:
+                return {
+                    "success": False,
+                    "error": save_err,
+                    "message": f"OTP validated, but saving the Aadhaar-PAN link request failed: {save_err}",
+                    "status_code": getattr(save_response, "status_code", None),
+                }
+
+            save_messages = save_data.get("messages", []) if isinstance(save_data, dict) else []
+            save_errors = save_data.get("errors", []) if isinstance(save_data, dict) else []
+            success_codes = {
+                "EF00000",
+                "EF40105",
+                "EF40122",
+                "EF40126",
+                "EF40127",
+                "VALID_AADHAAR_NUMBER",
+                "AADHAR_PAN_LINKAGE_CONSTANT",
+            }
+            save_success = (
+                any(
+                    str(message.get("code", "")).upper() in success_codes
+                    for message in save_messages
+                    if isinstance(message, dict)
+                )
+                and not save_errors
+            )
+
+            save_error = None
+            if not save_success:
+                save_error_parts = []
+                for message in save_messages:
+                    if isinstance(message, dict):
+                        description = (
+                            message.get("desc")
+                            or message.get("description")
+                            or message.get("message", "")
+                        )
+                        if description:
+                            save_error_parts.append(description)
+                for error in save_errors:
+                    if isinstance(error, dict):
+                        description = (
+                            error.get("desc")
+                            or error.get("description")
+                            or error.get("message", "")
+                        )
+                        if description:
+                            save_error_parts.append(description)
+                    elif isinstance(error, str):
+                        save_error_parts.append(error)
+
+                save_error = "; ".join(save_error_parts) if save_error_parts else "Save request failed"
 
             return {
-                "success": has_success,
-                "data": data,
+                "success": save_success,
+                "data": save_data,
                 "result": result,
-                "message": result if has_success else (error_text or "OTP validation failed"),
-                "error": error_text,
-                "messages": messages,
-                "errors": errors,
-                "status_code": response.status_code,
+                "message": "Aadhaar-PAN linkage request submitted successfully"
+                if save_success
+                else (save_error or "Aadhaar-PAN linkage request failed"),
+                "error": save_error,
+                "messages": save_messages,
+                "errors": save_errors,
+                "status_code": save_response.status_code,
             }
 
         except Exception as e:
@@ -5663,23 +5736,35 @@ class EPortalClient:
                 "message": f"Failed to validate Aadhaar-PAN link OTP: {str(e)}",
             }
 
-    def generate_pan_link_otp(self,aadhar_no,pan,mobile,name,area_cd="91",country_cd="IN"):
-
-        resp=self.validate_pan_adhaar_number(aadhar_no=aadhar_no)
-
+    def generate_pan_link_otp(self, aadhar_no, pan, mobile, name, area_cd="91", country_cd="IN"):
+        resp = self.validate_pan_adhaar_number(aadhar_no=aadhar_no)
         if not resp["success"]:
             return resp
 
-        resp2=self.get_validate_adhaar_pan_linkage(aadhar_no=aadhar_no,name=name,pan=pan,mobile_num=mobile,area_cd=area_cd,country_cd=country_cd) 
+        self.adhar_pan_link_aadhaar = aadhar_no
+        self.adhar_pan_link_name = name
+        self.adhar_pan_link_pan = pan
+        self.adhar_pan_link_mobile = mobile
+        self.adhar_pan_link_area_cd = area_cd
+        self.adhar_pan_link_country_cd = country_cd
 
+        resp2 = self.get_validate_adhaar_pan_linkage(
+            aadhar_no=aadhar_no,
+            name=name,
+            pan=pan,
+            mobile_num=mobile,
+            area_cd=area_cd,
+            country_cd=country_cd,
+        )
         if not resp2["success"]:
-            return resp2    
+            return resp2
 
-
-        resp3=self.send_adhar_pan_link_otp(pan=pan,mobile=mobile,area_cd=area_cd,country_cd=country_cd)
-
-
-        return resp3
+        return self.send_adhar_pan_link_otp(
+            pan=pan,
+            mobile=mobile,
+            area_cd=area_cd,
+            country_cd=country_cd,
+        )
 
     
     def get_ais_redirection(self, pan):
