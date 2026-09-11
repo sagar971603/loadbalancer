@@ -563,4 +563,4 @@ Do not log the API key, portal password, Aadhaar number, OTP, session IDs, cooki
 - Display safe `message` text; do not expose raw stack traces or complete portal payloads.
 - On socket close, discard its session IDs and restart the affected flow.
 - Base64-decode `pdf_base64` for ITR receipts.
-- Do not use `generate_pan_link_otp` until its backend handler is corrected and tested.
+- `generate_pan_link_otp` requires `name`; `verify_pan_link_otp` validates the OTP and submits the final linkage request on the same socket.

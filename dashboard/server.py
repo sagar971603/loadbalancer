@@ -34,42 +34,6 @@ SERVICES = {
 
 MACHINES = [
     {
-        "id": "node-a", "label": "Backend A",
-        "routes": {"newtool": "217.217.249.145", "registration": "217.217.249.145"},
-        "egress": {"newtool": ["217.217.249.145", "147.93.168.214"], "registration": ["217.217.249.145", "147.93.168.214"]},
-    },
-    {
-        "id": "node-b", "label": "Backend B",
-        "routes": {"newtool": "217.216.78.35", "registration": "217.216.78.35"},
-        "egress": {"newtool": ["217.216.78.35", "147.93.168.221"], "registration": ["217.216.78.35", "147.93.168.221"]},
-    },
-    {
-        "id": "node-c", "label": "Backend C",
-        "routes": {"newtool": "217.216.78.96", "registration": "217.216.78.96"},
-        "egress": {"newtool": ["217.216.78.96", "147.93.171.116"], "registration": ["217.216.78.96"]},
-        "notes": {"147.93.171.116": "Registration API currently filtered; Newtool2 remains available."},
-    },
-    {
-        "id": "node-e", "label": "Backend E",
-        "routes": {"newtool": "147.93.169.153", "registration": "147.93.169.153"},
-        "egress": {"newtool": ["147.93.169.153", "147.93.171.244"], "registration": ["147.93.169.153", "147.93.171.244"]},
-    },
-    {
-        "id": "node-f", "label": "Backend F",
-        "routes": {"newtool": "147.93.171.101", "registration": "147.93.171.101"},
-        "egress": {"newtool": ["147.93.171.101", "147.93.171.245"], "registration": ["147.93.171.101", "147.93.171.245"]},
-    },
-    {
-        "id": "node-g", "label": "Backend G",
-        "routes": {"newtool": "147.93.169.212", "registration": "147.93.169.212"},
-        "egress": {"newtool": ["147.93.169.212", "147.93.169.213"], "registration": ["147.93.169.212", "147.93.169.213"]},
-    },
-    {
-        "id": "node-h", "label": "Backend H",
-        "routes": {"newtool": "147.93.169.214", "registration": "147.93.169.214"},
-        "egress": {"newtool": ["147.93.169.214", "147.93.169.215"], "registration": ["147.93.169.214", "147.93.169.215"]},
-    },
-    {
         "id": "node-i", "label": "Backend I",
         "routes": {"newtool": "217.217.249.229", "registration": "217.217.249.229"},
         "egress": {"newtool": ["217.217.249.229", "147.93.168.74"], "registration": ["217.217.249.229", "147.93.168.74"]},

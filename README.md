@@ -57,25 +57,18 @@ Registration passes through the session-aware router on `127.0.0.1:18002`. New `
 
 Each healthy outgoing Registration IP has two browser-session slots. A dual-IP backend is configured with `weight=2` and therefore receives four slots; a single healthy-IP backend uses `weight=1` and receives two. Registration portal calls are paced to one every ten seconds per outgoing IP and transport failures are retried only once. Only one incoming address per physical machine belongs in the Registration upstream.
 
-## Current nine-machine capacity
+## Current two-machine capacity
 
 | Backend | Incoming route | Outgoing IPs | Newtool slots | Registration slots |
 |---|---|---|---:|---:|
-| A | `217.217.249.145` | `.145`, `147.93.168.214` | 10 | 0 (portal-filtered) |
-| B | `217.216.78.35` | `.35`, `147.93.168.221` | 10 | 10 |
-| C | `217.216.78.96` | `.96`, `147.93.171.116` | 10 | 5 (`.96` only) |
-| E | `147.93.169.153` | `.153`, `147.93.171.244` | 10 | 0 (portal-filtered) |
-| F | `147.93.171.101` | `.101`, `147.93.171.245` | 10 | 0 (portal-filtered) |
-| G | `147.93.169.212` | `.212`, `.213` | 10 | 0 (portal-filtered) |
-| H | `147.93.169.214` | `.214`, `.215` | 10 | 0 (portal-filtered) |
-| I | `217.217.249.229` | `.229`, `147.93.168.74` | 10 | 0 (portal-filtered) |
-| J | `217.216.58.27` | `.27`, `147.93.168.146` | 10 | 0 (portal-filtered) |
+| I | `217.217.249.229` | `.229`, `147.93.168.74` | 10 | 6 |
+| J | `217.216.58.27` | `.27`, `147.93.168.146` | 10 | 6 |
 
-Current verified capacity is 90 simultaneous Newtool sessions and 15 simultaneous Registration sessions. Registration uses only the three IPs that returned normal API responses on 2026-08-03; filtered routes remain disabled for new jobs but still accept follow-ups for existing prefixed sessions.
+Current verified capacity is 20 simultaneous Newtool sessions and 12 simultaneous Registration sessions. Backends A–H were permanently retired from both production pools on 2026-09-11.
 
 ## Newtool session capacity and waiting
 
-Newtool admits at most five logged-in sessions per outgoing public IP. Every current Newtool backend has two verified IPv4 egress addresses and therefore ten active-session slots, bringing the pool to 90 active Newtool sessions.
+Newtool admits at most five logged-in sessions per outgoing public IP. Both current Newtool backends have two verified IPv4 egress addresses and therefore ten active-session slots, bringing the pool to 20 active Newtool sessions.
 
 When all ten slots on the backend selected by `ip_hash` are occupied, a new login waits for a slot for up to 300 seconds. The wait is local to that selected backend; it is not a Redis/global queue and the job is not moved to another backend. The client must keep its WebSocket connected while waiting.
 
@@ -85,7 +78,7 @@ A successful login keeps the same outgoing IP and its slot for the whole session
 
 ### Production traffic dashboard
 
-Open [https://newtool2.fskindia.com/server-control/](https://newtool2.fskindia.com/server-control/) with the separately stored dashboard login. It shows all nine physical machines, incoming application routes, response time, live load-balancer connections, and per-outgoing-IP active/limit counters for both applications.
+Open [https://newtool2.fskindia.com/server-control/](https://newtool2.fskindia.com/server-control/) with the separately stored dashboard login. It shows both active physical machines, incoming application routes, response time, live load-balancer connections, and per-outgoing-IP active/limit counters for both applications.
 
 Route controls create a timestamped backup, refuse to disable the last backend, preserve `ip_hash`, validate NGINX, and restore the original automatically if validation or reload fails. Disabling an incoming route does not disable a dual-IP backend's outgoing proxy.
 

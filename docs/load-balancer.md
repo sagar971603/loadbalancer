@@ -8,7 +8,7 @@ The production dashboard is available at:
 https://newtool2.fskindia.com/server-control/
 ```
 
-It groups all nine physical machines and displays Newtool2 and Registration health, incoming routes, latency, live connections, and live active/limit counters for every outgoing IP.
+It groups both active physical machines and displays Newtool2 and Registration health, incoming routes, latency, live connections, and live active/limit counters for every outgoing IP.
 
 Use Enable/Disable only for incoming load-balancer routing. These controls do not switch off an outgoing egress proxy on a dual-IP backend. Every change is allow-listed, backed up under `/var/backups/lb-dashboard`, validated with `nginx -t`, gracefully reloaded, and rolled back on failure. The final enabled backend cannot be disabled.
 
@@ -38,7 +38,7 @@ ip_hash;
 
 Do not change the balancing method. Automation V2 stores sessions and WebSocket connections in process memory.
 
-Use exactly one incoming upstream entry per physical machine. Weight that entry by usable outgoing-IP capacity: `weight=2` for a dual-egress machine and `weight=1` for a single-egress machine. Current incoming routes are `.145`, `.35`, `.96`, `.153`, `.101`, `.212`, `.214`, `.229`, and `.27`. Registration currently enables only Backend B (`.35` and `.221`, weight `2`) and Backend C (`.96`, weight `1`). Every enabled Newtool backend still has two outgoing IPv4 addresses and equal weight `2`; the Registration route changes do not affect Newtool.
+Use exactly one incoming upstream entry per physical machine. Weight that entry by usable outgoing-IP capacity: `weight=2` for a dual-egress machine and `weight=1` for a single-egress machine. The current incoming routes are Backend I (`217.217.249.229`) and Backend J (`217.216.58.27`). Both use two outgoing IPv4 addresses and equal weight `2` for Newtool2 and Registration. Backends A–H were permanently removed on 2026-09-11.
 
 ## Back up the running load balancer
 
