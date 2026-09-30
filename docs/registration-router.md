@@ -15,7 +15,7 @@ Portal calls are serialized and paced to one every ten seconds per outgoing IP. 
 
 Three consecutive transport failures open a circuit for only that outgoing IP. It cools for 30 minutes, then allows one recovery probe; repeated probe failures extend the cooldown to two hours and then six hours. The router also cools the failed backend briefly and allows at most one alternate backend for a safe Step-1 initialization failure. OTP follow-ups remain on their original backend because moving a live browser session would break the portal session.
 
-The current Registration pool contains Backend I (`217.217.249.229`, `147.93.168.74`) and Backend J (`217.216.58.27`, `147.93.168.146`), both with weight `2` and six session slots. Total capacity is 12 simultaneous Registration sessions. Backends A–H were permanently removed on 2026-09-11.
+The current Registration pool uses Backend J (`217.216.58.27`, `147.93.168.146`) with weight `2` and six session slots. Backend I (`217.217.249.229`, `147.93.168.74`) remains configured as `down` for later reactivation. Backends A–H were permanently removed on 2026-09-11.
 
 ## Add a prepared backend
 

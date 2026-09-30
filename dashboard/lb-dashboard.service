@@ -14,7 +14,7 @@ RestartSec=3
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/etc/nginx/sites-available /var/backups/lb-dashboard /var/log/nginx
+ReadWritePaths=/etc/nginx/sites-available /var/backups/lb-dashboard /var/log/nginx /run
 
 [Install]
 WantedBy=multi-user.target

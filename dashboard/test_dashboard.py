@@ -38,8 +38,9 @@ class DashboardTest(unittest.TestCase):
         expected = {"217.217.249.229", "217.216.58.27"}
         self.assertEqual(set(newtool), expected)
         self.assertEqual(set(registration), expected)
-        self.assertTrue(all(route["enabled"] for route in newtool.values()))
-        self.assertTrue(all(route["enabled"] for route in registration.values()))
+        for routes in (newtool, registration):
+            self.assertFalse(routes["217.217.249.229"]["enabled"])
+            self.assertTrue(routes["217.216.58.27"]["enabled"])
 
     @patch("dashboard.server.urllib.request.urlopen")
     def test_health_failure_is_safe(self, urlopen):

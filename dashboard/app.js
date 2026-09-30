@@ -38,30 +38,34 @@ function egressCell(status) {
 
 function render(data) {
   const rows = data.machines.flatMap(machine => machine.rows);
-  const healthy = rows.filter(row => row.healthy).length;
+  const enabledRows = rows.filter(row => row.enabled);
+  const healthy = enabledRows.filter(row => row.healthy).length;
   const disabled = rows.filter(row => !row.enabled).length;
   const connections = rows.reduce((sum, row) => sum + Number(row.live_connections || 0), 0);
   const sessions = rows.reduce((sum, row) => sum + Number(row.details?.active_sessions || 0) + Number(row.service === 'newtool' ? row.details?.forgot_password_sessions || 0 : 0), 0);
   const websockets = rows.reduce((sum, row) => sum + Number(row.details?.websockets || 0), 0);
 
   summary.innerHTML = [
-    ['Healthy routes', `${healthy}/${rows.length}`],
+    ['Healthy enabled routes', `${healthy}/${enabledRows.length}`],
     ['Live connections', connections],
     ['Sampled sessions', sessions],
     ['WebSockets', websockets],
     ['Disabled routes', disabled],
   ].map(([label, value]) => `<article class="metric"><span>${label}</span><strong>${value}</strong></article>`).join('');
 
-  const allGood = healthy === rows.length && disabled === 0;
+  const allGood = enabledRows.length > 0 && healthy === enabledRows.length;
   overall.className = `status-dot ${allGood ? 'good' : 'bad'}`;
-  overallText.textContent = allGood ? 'All configured routes healthy' : `${rows.length - healthy} unhealthy - ${disabled} disabled`;
+  overallText.textContent = allGood ? 'All enabled routes healthy' : `${enabledRows.length - healthy} enabled routes unhealthy`;
   checked.textContent = `Updated ${new Date(data.checked_at).toLocaleTimeString()} - auto-refresh 10 seconds`;
 
-  machines.innerHTML = data.machines.map(machine => `
+  machines.innerHTML = data.machines.map(machine => {
+    const active = machine.rows.filter(row => row.enabled);
+    const state = active.length ? (active.length === 2 && active.every(row => row.healthy) ? 'Healthy' : 'Attention') : 'Disabled';
+    return `
     <article class="machine">
       <div class="machine-head">
         <div><h2>${escapeHtml(machine.label)}</h2><div class="ip-list">Outgoing: ${machine.outgoing.map(item => escapeHtml(item.ip)).join(' &middot; ')}</div></div>
-        <span class="pill ${machine.rows.length === 2 && machine.rows.every(row => row.healthy) ? 'healthy' : 'unhealthy'}">${machine.rows.length === 2 && machine.rows.every(row => row.healthy) ? 'Healthy' : 'Attention'}</span>
+        <span class="pill ${state === 'Healthy' ? 'healthy' : state === 'Disabled' ? 'disabled' : 'unhealthy'}">${state}</span>
       </div>
       <div class="rows"><table>
         <thead><tr><th>Application</th><th>Incoming IP</th><th>Health</th><th>Sessions</th><th>Route</th><th>Control</th></tr></thead>
@@ -87,7 +91,8 @@ function render(data) {
           </tr>`).join('')}</tbody>
         </table></div>
       </div>
-    </article>`).join('');
+    </article>`;
+  }).join('');
 
   document.querySelectorAll('.toggle').forEach(button => button.addEventListener('click', () => {
     pending = {...button.dataset};

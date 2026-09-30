@@ -4,23 +4,17 @@ set -Eeuo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 for script in "$ROOT"/scripts/*.sh; do bash -n "$script"; done
 
-if find "$ROOT" -type f \( -name '.env' -o -name '*.pem' -o -name '*.key' -o -name '*.log' -o -name '*.pdf' -o -name '*.htpasswd' \) -print -quit | grep -q .; then
+if git -C "$ROOT" ls-files | grep -Eq '(^|/)\.env$|\.(pem|key|log|pdf|htpasswd)$'; then
   echo "Forbidden secret/data file found." >&2
   exit 1
 fi
 
 grep -qE '^[[:space:]]*ip_hash;' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
-grep -qE 'server[[:space:]]+147[.]93[.]169[.]153:80.*weight=2' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
-grep -qE 'server[[:space:]]+147[.]93[.]171[.]101:80.*weight=2' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
-grep -qE 'server[[:space:]]+147[.]93[.]169[.]212:80.*weight=2' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
-grep -qE 'server[[:space:]]+147[.]93[.]169[.]214:80.*weight=2' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
-grep -qE 'server[[:space:]]+217[.]217[.]249[.]229:80.*weight=2' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
-grep -qE 'server[[:space:]]+217[.]216[.]58[.]27:80.*weight=2' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
+grep -qE 'server[[:space:]]+217[.]217[.]249[.]229:80.*weight=2.*down;' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
+grep -qE 'server[[:space:]]+217[.]216[.]58[.]27:80.*weight=2.*30s;' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
 grep -qE '^[[:space:]]*ip_hash;' "$ROOT/backup/load-balancer/nginx/sites-available/regpan4.fskindia.com"
-grep -qE 'server[[:space:]]+217[.]216[.]78[.]35:8002[[:space:]]+weight=2;' "$ROOT/backup/load-balancer/nginx/sites-available/regpan4.fskindia.com"
-grep -qE 'server[[:space:]]+217[.]216[.]78[.]96:8002[[:space:]]+weight=1;' "$ROOT/backup/load-balancer/nginx/sites-available/regpan4.fskindia.com"
-grep -qE 'server[[:space:]]+217[.]217[.]249[.]145:8002.*down;' "$ROOT/backup/load-balancer/nginx/sites-available/regpan4.fskindia.com"
-grep -qE 'server[[:space:]]+217[.]216[.]58[.]27:8002.*down;' "$ROOT/backup/load-balancer/nginx/sites-available/regpan4.fskindia.com"
+grep -qE 'server[[:space:]]+217[.]217[.]249[.]229:8002.*weight=2[[:space:]]+down;' "$ROOT/backup/load-balancer/nginx/sites-available/regpan4.fskindia.com"
+grep -qE 'server[[:space:]]+217[.]216[.]58[.]27:8002.*weight=2;' "$ROOT/backup/load-balancer/nginx/sites-available/regpan4.fskindia.com"
 grep -q '127.0.0.1:8009' "$ROOT/backup/backend/nginx/automation-v2"
 grep -q '127.0.0.1:8010' "$ROOT/backup/backend/nginx/registration"
 [[ -f $ROOT/app/automation-v2/api/main.py ]]
