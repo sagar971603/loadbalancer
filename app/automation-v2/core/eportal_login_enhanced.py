@@ -78,6 +78,15 @@ def _next_proxy() -> Optional[str]:
         return proxy
 
 
+def normalize_payment_bank_code(value: Optional[str] = None) -> str:
+    """Default an unselected bank to Canara and validate portal bank-code syntax."""
+    if value is None or isinstance(value, str) and not value.strip():
+        return "CNRB"
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z]{4}", value.strip()):
+        raise ValueError("bank_code must be a four-letter portal bank code, such as CNRB")
+    return value.strip().upper()
+
+
 def _blocking_itr_errors(errors: Any) -> List[Any]:
     """Return ITR validation errors except portal advisory categories B and D."""
     if not isinstance(errors, list):
@@ -4185,7 +4194,7 @@ class EPortalClient:
         self,
         amount: float = 1000,
         assessment_year: Optional[str] = None,
-        bank_code: str = "MAHB",
+        bank_code: str = "CNRB",
         major_head: str = "0021",
         minor_head: str = "500",
         sub_minor_hd: str = "APL",
@@ -4193,6 +4202,7 @@ class EPortalClient:
     ) -> Dict[str, Any]:
         """Create payment challan after OTP validation."""
         try:
+            bank_code = normalize_payment_bank_code(bank_code)
             # derive current AY if not provided, e.g., 2026-27
             if not assessment_year:
                 today = datetime.utcnow()
@@ -4273,6 +4283,7 @@ class EPortalClient:
             self.last_challan_amount = data.get("totalAmt")
             self.last_challan_assessment_year = data.get("assmentYear")
             self.last_challan_bank = data.get("bankName") or data.get("bankCd")
+            self.last_challan_bank_code = bank_code
             self.last_challan_json_data = data.get("jsonData")
 
             error_messages = []
@@ -4353,6 +4364,7 @@ class EPortalClient:
             self.last_crn_assessment_year = data.get("assessmentYear") or data.get("assmentYear")
             self.last_crn_amount = data.get("totalAmt")
             self.last_crn_bank = data.get("bankName") or data.get("bankCd")
+            self.last_crn_bank_code = data.get("bankCd")
             self.last_crn_json_data = data.get("jsonData")
 
             error_messages = []
@@ -4399,7 +4411,10 @@ class EPortalClient:
             req_id = getattr(self, "payment_req_id", None)
             crn = getattr(self, "last_crn", None) or getattr(self, "last_challan_crn", None)
             pan = getattr(self, "payment_pan", None)
-            bank_code = bank_cd or getattr(self, "last_crn_bank", None) or "HDFC"
+            bank_code = normalize_payment_bank_code(
+                bank_cd if bank_cd is not None else
+                getattr(self, "last_challan_bank_code", None) or getattr(self, "last_crn_bank_code", None)
+            )
 
             if not (req_id and crn and pan):
                 return {
@@ -4683,11 +4698,12 @@ class EPortalClient:
         payment_details: Dict[str, Any],
         payment_mode: str = "EPY",
         sub_pay_mode: str = "PG",
-        bank_cd: str = "MAHB",
+        bank_cd: str = "CNRB",
         payment_mode_desc: str = "e-Payment/Internet Banking",
         eff_bank_details: str = "",
     ) -> Dict[str, Any]:
         """Add bank/payment details to payment draft (saved draft)."""
+        bank_cd = normalize_payment_bank_code(bank_cd)
         url = "https://eportal.incometax.gov.in/iec/paymentapi/auth/challan/savedraft"
 
         
@@ -4773,9 +4789,10 @@ class EPortalClient:
 
         # ...existing code...
 
-    def create_advance_payment_challan(self, payment_details: Dict[str, Any]) -> Dict[str, Any]:
+    def create_advance_payment_challan(self, payment_details: Dict[str, Any], bank_code: str = "CNRB") -> Dict[str, Any]:
         """Create advance payment challan (post-login)."""
         try:
+            bank_code = normalize_payment_bank_code(bank_code)
             url = "https://eportal.incometax.gov.in/iec/paymentapi/auth/challan/create"
 
             payload = {
@@ -4790,7 +4807,7 @@ class EPortalClient:
                     "surCharge": 0,
                     "totalAmt": payment_details.get("totalAmt"),
                     "totalAmtWord": payment_details.get("totalAmtWord"),
-                    "bankCode": "MAHB",
+                    "bankCode": bank_code,
                     "basicTax": payment_details.get("basicTax"),
                     "eduCess": payment_details.get("eduCess", 0),
                     "interest": payment_details.get("interest", 0),
@@ -4853,10 +4870,10 @@ class EPortalClient:
             }
     
 
-    def  advance_payment_bank_url(self):
+    def advance_payment_bank_url(self, bank_code: str = "CNRB"):
 
         try:
-
+            bank_code = normalize_payment_bank_code(bank_code)
             url="https://eportal.incometax.gov.in/iec/paymentapi/bankapi/auth/v0.1/challan/pay/create"
 
                 # Bank redirect details
@@ -4865,7 +4882,7 @@ class EPortalClient:
 
             payload = {
                 "crn": self.challan_data.get("crn"),
-                "bank_cd": "MAHB",
+                "bank_cd": bank_code,
                 "loginType": "post",
                 "subPayMode": "PG",
                 "pan": self.payment_pan,
@@ -5102,9 +5119,10 @@ class EPortalClient:
         
             
 
-    def pay_payment(self,pan,payment_details,year="2026-27",old_regime=True,):
+    def pay_payment(self,pan,payment_details,year="2026-27",old_regime=True,bank_code="CNRB"):
 
         try:
+            bank_code = normalize_payment_bank_code(bank_code)
             resp=self.add_tax_applicable_details(pan,year=year,old_regime=old_regime)
             # print("step-0",resp)
             if not resp["success"]:
@@ -5113,15 +5131,15 @@ class EPortalClient:
             # print("step-1",resp2)
             if not resp2["success"]:
                 return resp2
-            resp3=self.add_bank_details(payment_details=payment_details)
+            resp3=self.add_bank_details(payment_details=payment_details, bank_cd=bank_code)
             # print("step-2",resp3) 
             if not resp3["success"]:
                 return resp3
-            resp4=self.create_advance_payment_challan(payment_details=payment_details)  
+            resp4=self.create_advance_payment_challan(payment_details=payment_details, bank_code=bank_code)
             # print("step-3",resp4)
             if not resp4["success"]:
                 return resp4
-            resp5=self.advance_payment_bank_url()
+            resp5=self.advance_payment_bank_url(bank_code=bank_code)
             return resp5
         
 

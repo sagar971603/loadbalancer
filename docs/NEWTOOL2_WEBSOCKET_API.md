@@ -245,8 +245,8 @@ Aadhaar flow uses the same actions but omits `dob` and `email_otp`.
 
 | Action | Login required | `data` fields | Result |
 |---|---:|---|---|
-| `pan_link` | No | `pan`, `aadhaar_number`, `mobile`, `password` | Starts linkage/payment flow and returns `pl_...` session ID |
-| `pan_link_continue` | No | `session_id`, `otp` | Validates payment OTP, creates challan/payment, returns bank redirect data |
+| `pan_link` | No | `pan`, `aadhaar_number`, `mobile`, `password`; optional `bank_code` | Starts linkage/payment flow and returns `pl_...` session ID |
+| `pan_link_continue` | No | `session_id`, `otp`; optional `bank_code` override | Validates payment OTP, creates challan/payment, returns bank redirect data |
 | `generate_pan_link_otp` | No | `session_id`, `name` | Intended to request linking OTP; see warning below |
 | `verify_pan_link_otp` | No | `session_id`, `otp` | Validates the linking OTP |
 
@@ -265,6 +265,8 @@ Start:
 ```
 
 Continue after payment OTP:
+
+Payment bank selection uses `data.bank_code`. Omitted, null, or blank selections default to `CNRB` (Canara Bank). A choice sent with `pan_link` is retained for `pan_link_continue`; the continuation can override it. Both the challan and bank redirect use the selected code.
 
 ```json
 {
@@ -370,7 +372,7 @@ The frontend should use `pdf_base64` and should not depend on the server-side `f
 |---|---|---|
 | `get_all_challans` | None | Optional `crn` filters the history |
 | `get_challan_details` | `year` | Returns challan details for the assessment year |
-| `pay_advance_tax` | `year`, `basicTax`, `totalAmt`, `totalAmtWord` | Amount fields may be flat or inside `payment_details`; `old_income_tax` defaults to `true` |
+| `pay_advance_tax` | `year`, `basicTax`, `totalAmt`, `totalAmtWord` | Amount fields may be flat or inside `payment_details`; `old_income_tax` defaults to `true`; optional `bank_code` defaults to `CNRB` |
 
 ```json
 {
@@ -379,6 +381,7 @@ The frontend should use `pdf_base64` and should not depend on the server-side `f
   "data": {
     "year": "2026-27",
     "old_income_tax": true,
+    "bank_code": "CNRB",
     "payment_details": {
       "basicTax": 1000,
       "surCharge": 0,
@@ -394,6 +397,8 @@ The frontend should use `pdf_base64` and should not depend on the server-side `f
 ```
 
 Successful payment preparation can include a bank `redirect_url`. Opening that URL and completing the bank flow is a frontend responsibility.
+
+Send `data.bank_code` as the portal's four-letter bank code, for example `CNRB` for Canara Bank or `MAHB` for Bank of Maharashtra. Codes are trimmed and converted to uppercase. Omitted, null, or blank values use `CNRB`; malformed values are rejected before payment preparation. The bank must be supported by the portal. The saved draft, challan, and redirect request all receive the same code. Existing request and response formats remain compatible; the bank field is optional.
 
 ### Bank accounts and prevalidation
 

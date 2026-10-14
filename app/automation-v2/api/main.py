@@ -25,7 +25,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 from egress_slots import EgressLease, EgressSlotPool
-from core.eportal_login_enhanced import EPortalClient
+from core.eportal_login_enhanced import EPortalClient, normalize_payment_bank_code
 from core.eportal_forgot_password_email_mobile_final import ePortalForgotPassword
 
 CLIENT_KEY = os.getenv("CLIENT_KEY")
@@ -985,6 +985,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         })
                         continue
                     try:
+                        bank_code = normalize_payment_bank_code(payload.get("bank_code"))
                         client = EPortalClient({"PAN": pan, "PASSWORD": password})
 
                         if client:
@@ -995,6 +996,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "pan": pan,
                                 "aadhaar_number": aadhaar_number,
                                 "mobile": mobile,
+                                "bank_code": bank_code,
                                 "created_at": datetime.now(),
                                 "expires_at": datetime.now() + timedelta(hours=1),
                             }
@@ -1119,6 +1121,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
 
                     try:
+                        bank_code = normalize_payment_bank_code(payload.get("bank_code", pl_session.get("bank_code")))
                         validate_result = await asyncio.to_thread(client.validate_payment_otp, otp=otp)
                         if not validate_result.get("success"):
                             await websocket.send_json({
@@ -1131,7 +1134,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             })
                             continue
 
-                        challan_result = await asyncio.to_thread(client.create_payment_challan)
+                        challan_result = await asyncio.to_thread(client.create_payment_challan, bank_code=bank_code)
                         if not challan_result.get("success"):
                             await websocket.send_json({
                                 "type": "response",
@@ -1143,7 +1146,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             })
                             continue
 
-                        payment_result = await asyncio.to_thread(client.create_payment)
+                        payment_result = await asyncio.to_thread(client.create_payment, bank_cd=bank_code)
                         await websocket.send_json({
                             "type": "response",
                             "action": action,
@@ -1575,6 +1578,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 year=year,
                                 payment_details=payment_details,
                                 old_regime=old_income_tax,
+                                bank_code=payload.get("bank_code"),
                             )
 
 
