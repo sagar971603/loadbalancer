@@ -61,16 +61,16 @@ Each healthy outgoing Registration IP has three browser-session slots. A dual-IP
 
 | Backend | Incoming route | Outgoing IPs | Newtool slots | Registration slots |
 |---|---|---|---:|---:|
-| I (disabled) | `217.217.249.229` | `.229`, `147.93.168.74` | 0 | 0 |
 | J | `217.216.58.27` | `.27`, `147.93.168.146` | 10 | 6 |
+| K | `94.136.188.175` | `94.136.188.175` | 5 | 3 |
 
-Current verified capacity is 10 simultaneous Newtool sessions and 6 simultaneous Registration sessions. Backend I was disabled on 2026-09-30 and remains in both upstreams for later reactivation after repair. Backends A–H were permanently retired from both production pools on 2026-09-11.
+Configured capacity is 15 simultaneous Newtool sessions and 9 simultaneous Registration sessions. Backend K's additional IP, `13.140.252.220`, remains inactive pending Contabo routing. Backend I was removed from both production pools on 2026-11-23.
 
 ## Newtool session capacity and waiting
 
-Newtool admits at most five logged-in sessions per outgoing public IP. The active Backend J has two verified IPv4 egress addresses and therefore ten active-session slots.
+Newtool admits at most five logged-in sessions per outgoing public IP. Backend J has ten slots across two addresses and Backend K has five slots on its primary address.
 
-When all ten slots on the backend selected by `ip_hash` are occupied, a new login waits for a slot for up to 300 seconds. The wait is local to that selected backend; it is not a Redis/global queue and the job is not moved to another backend. The client must keep its WebSocket connected while waiting.
+When all slots on the backend selected by `ip_hash` are occupied, a new login waits for a slot for up to 300 seconds. The wait is local to that selected backend; it is not a Redis/global queue and the job is not moved to another backend. The client must keep its WebSocket connected while waiting.
 
 A successful login keeps the same outgoing IP and its slot for the whole session. Logout, WebSocket disconnect, five-minute WebSocket inactivity, login failure, expiry, or a service stop releases the slot. Linux process locks enforce the limit across all five Gunicorn workers and are released automatically if a worker exits. Slow portal calls run outside the WebSocket event loop so health checks and other connections remain responsive.
 

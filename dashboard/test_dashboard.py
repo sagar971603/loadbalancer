@@ -8,10 +8,10 @@ from dashboard import server
 
 class DashboardTest(unittest.TestCase):
     def test_two_machine_topology_and_outgoing_ips(self):
-        self.assertEqual([item["id"] for item in server.MACHINES], ["node-i", "node-j"])
-        node_i = next(item for item in server.MACHINES if item["id"] == "node-i")
+        self.assertEqual([item["id"] for item in server.MACHINES], ["node-j", "node-k"])
+        node_k = next(item for item in server.MACHINES if item["id"] == "node-k")
         node_j = next(item for item in server.MACHINES if item["id"] == "node-j")
-        self.assertEqual(node_i["egress"]["registration"], ["217.217.249.229", "147.93.168.74"])
+        self.assertEqual(node_k["egress"]["registration"], ["94.136.188.175"])
         self.assertEqual(node_j["egress"]["newtool"], ["217.216.58.27", "147.93.168.146"])
 
     def test_parse_upstream_and_status_shape(self):
@@ -35,12 +35,11 @@ class DashboardTest(unittest.TestCase):
         registration = server.parse_upstream(
             str(sites / "regpan4.fskindia.com"), "regpan4_backend"
         )
-        expected = {"217.217.249.229", "217.216.58.27"}
+        expected = {"94.136.188.175", "217.216.58.27"}
         self.assertEqual(set(newtool), expected)
         self.assertEqual(set(registration), expected)
         for routes in (newtool, registration):
-            self.assertFalse(routes["217.217.249.229"]["enabled"])
-            self.assertTrue(routes["217.216.58.27"]["enabled"])
+            self.assertTrue(all(route["enabled"] for route in routes.values()))
 
     @patch("dashboard.server.urllib.request.urlopen")
     def test_health_failure_is_safe(self, urlopen):

@@ -34,14 +34,15 @@ SERVICES = {
 
 MACHINES = [
     {
-        "id": "node-i", "label": "Backend I",
-        "routes": {"newtool": "217.217.249.229", "registration": "217.217.249.229"},
-        "egress": {"newtool": ["217.217.249.229", "147.93.168.74"], "registration": ["217.217.249.229", "147.93.168.74"]},
-    },
-    {
         "id": "node-j", "label": "Backend J",
         "routes": {"newtool": "217.216.58.27", "registration": "217.216.58.27"},
         "egress": {"newtool": ["217.216.58.27", "147.93.168.146"], "registration": ["217.216.58.27", "147.93.168.146"]},
+    },
+    {
+        "id": "node-k", "label": "Backend K",
+        "routes": {"newtool": "94.136.188.175", "registration": "94.136.188.175"},
+        "egress": {"newtool": ["94.136.188.175"], "registration": ["94.136.188.175"]},
+        "notes": {"13.140.252.220": "Contabo gateway unreachable; additional IP inactive."},
     },
 ]
 

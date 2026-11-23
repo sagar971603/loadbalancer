@@ -38,7 +38,7 @@ ip_hash;
 
 Do not change the balancing method. Automation V2 stores sessions and WebSocket connections in process memory.
 
-Use exactly one incoming upstream entry per physical machine. Weight that entry by usable outgoing-IP capacity: `weight=2` for a dual-egress machine and `weight=1` for a single-egress machine. Backend J (`217.216.58.27`) is enabled with two outgoing IPv4 addresses. Backend I (`217.217.249.229`) remains configured with `down` and can be enabled from the dashboard after repair and health checks. Backends A–H were permanently removed on 2026-09-11.
+Use exactly one incoming upstream entry per physical machine. Weight that entry by usable outgoing-IP capacity: `weight=2` for a dual-egress machine and `weight=1` for a single-egress machine. Backend J (`217.216.58.27`) uses two outgoing IPv4 addresses, and Backend K (`94.136.188.175`) uses its primary IP while the additional IP awaits Contabo routing. Backend I was removed on 2026-11-23.
 
 ## Back up the running load balancer
 
