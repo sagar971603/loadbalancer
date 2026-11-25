@@ -1,9 +1,13 @@
+import asyncio
+import json
 import threading
 import unittest
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 import requests
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 
 import regmainhybrid as api
 from registration_core import ePortalRegistrationApi
@@ -88,6 +92,30 @@ class RegistrationResilienceTest(unittest.TestCase):
 
     def tearDown(self):
         api.registration_sessions.clear()
+
+    def test_final_otp_accepts_paste_whitespace_and_keeps_leading_zero(self):
+        request = api.FinalOTPRequest(
+            session_id="rg_test_session", mobile_otp=" 012345 ", email_otp="654321\n"
+        )
+        self.assertEqual(request.mobile_otp, "012345")
+        self.assertEqual(request.email_otp, "654321")
+
+    def test_validation_response_and_log_omit_rejected_otp(self):
+        body = {"session_id": "rg_test_session", "mobile_otp": "123456", "email_otp": "ABCDEF"}
+        with self.assertRaises(ValidationError) as exc:
+            api.FinalOTPRequest(**body)
+        error = RequestValidationError(exc.exception.errors(), body=body)
+        request = SimpleNamespace(method="POST", url=SimpleNamespace(path="/api/v1/registration/verify-final-otp"))
+        with self.assertLogs("regmainhybrid", level="WARNING") as logged:
+            response = asyncio.run(api.validation_exception_handler(request, error))
+        data = json.loads(response.body)
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(data["error"], "validation_error")
+        self.assertEqual(data["message"], "Enter the six-digit Email OTP exactly as received.")
+        self.assertEqual(data["data"]["errors"][0]["loc"], ["email_otp"])
+        self.assertEqual(data["data"]["errors"][0]["type"], "string_pattern_mismatch")
+        self.assertNotIn("ABCDEF", response.body.decode())
+        self.assertNotIn("ABCDEF", " ".join(logged.output))
 
     def test_aadhaar_retry_resumes_after_completed_otp(self):
         request = api.AadhaarOTPRequest(session_id="rg_test_session", aadhaar_otp="123456")

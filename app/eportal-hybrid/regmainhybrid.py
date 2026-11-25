@@ -32,8 +32,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Dict, Any, List, Optional
+from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
+from typing import Annotated, Dict, Any, List, Optional
 import logging
 from datetime import datetime, timedelta, timezone
 import secrets
@@ -108,10 +108,6 @@ def redact(value: Any, key: str = "") -> Any:
 
 def _session_ref(session_id: Optional[str]) -> str:
     return _fingerprint("session", session_id) if session_id else "-"
-
-
-def _json_safe(value: Any) -> Any:
-    return json.loads(json.dumps(redact(value), ensure_ascii=True, default=str))
 
 
 if not CLIENT_KEY:
@@ -350,28 +346,20 @@ class UserRegistrationData(BaseModel):
 class RegistrationInitRequest(BaseModel):
     user: UserRegistrationData = Field(..., description="User registration data")
 
+
+RegistrationOTP = Annotated[str, StringConstraints(
+    strict=True, strip_whitespace=True, min_length=6, max_length=6, pattern=r"^[0-9]{6}$"
+)]
+
+
 class AadhaarOTPRequest(BaseModel):
     session_id: str = Field(..., min_length=10, max_length=128, description="Registration session ID")
-    aadhaar_otp: str = Field(..., min_length=6, max_length=6, description="Aadhaar OTP")
-
-    @field_validator('aadhaar_otp')
-    @classmethod
-    def validate_otp(cls, v):
-        if not v.isdigit():
-            raise ValueError("aadhaar_otp must be 6 digits")
-        return v
+    aadhaar_otp: RegistrationOTP = Field(..., description="Aadhaar OTP")
 
 class FinalOTPRequest(BaseModel):
     session_id: str = Field(..., min_length=10, max_length=128, description="Registration session ID")
-    mobile_otp: str = Field(..., min_length=6, max_length=6, description="Mobile OTP")
-    email_otp: str = Field(..., min_length=6, max_length=6, description="Email OTP")
-
-    @field_validator('mobile_otp', 'email_otp')
-    @classmethod
-    def validate_otps(cls, v):
-        if not v.isdigit():
-            raise ValueError("OTP values must be 6 digits")
-        return v
+    mobile_otp: RegistrationOTP = Field(..., description="Mobile OTP")
+    email_otp: RegistrationOTP = Field(..., description="Email OTP")
 
 class SessionCloseRequest(BaseModel):
     session_id: str = Field(..., min_length=10, max_length=128, description="Registration session ID to close")
@@ -746,10 +734,22 @@ async def request_observability(request: Request, call_next):
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    otp_fields = {"aadhaar_otp": "Aadhaar OTP", "mobile_otp": "Mobile OTP", "email_otp": "Email OTP"}
+    errors = []
+    otp_messages = []
+    for error in exc.errors():
+        location = error.get("loc", ())
+        field = location[-1] if location else None
+        label = otp_fields.get(field)
+        message = _redact_text(error["msg"])
+        if label:
+            message = f"Enter the six-digit {label} exactly as received."
+            otp_messages.append(message)
+        errors.append({"loc": location, "type": error["type"], "msg": message})
+
     logger.warning(
-        "Request validation failed; errors=%s body=%s",
-        json.dumps(redact(exc.errors()), ensure_ascii=True, default=str),
-        json.dumps(redact(exc.body), ensure_ascii=True, default=str),
+        "Request validation failed; errors=%s",
+        json.dumps(errors, ensure_ascii=True, default=str),
         extra={
             "event": "request_validation_failed",
             "http_method": request.method,
@@ -761,9 +761,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         status_code=422,
         content=StandardResponse(
             success=False,
-            message="Request validation failed",
+            message=" ".join(otp_messages) or "Request validation failed",
             error="validation_error",
-            data={"errors": _json_safe(exc.errors())},
+            data={"errors": errors},
         ).model_dump(),
     )
 
