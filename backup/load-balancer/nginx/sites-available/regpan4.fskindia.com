@@ -3,7 +3,7 @@ upstream regpan4_backend {
     # these peers, weights and down flags on every new Registration job.
     ip_hash;
     server 217.216.58.27:8002 weight=2;
-    server 94.136.188.175:8002 weight=1;
+    server 94.136.188.175:8002 weight=2;
 }
 
 server {

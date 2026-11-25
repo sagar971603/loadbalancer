@@ -11,7 +11,7 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual([item["id"] for item in server.MACHINES], ["node-j", "node-k"])
         node_k = next(item for item in server.MACHINES if item["id"] == "node-k")
         node_j = next(item for item in server.MACHINES if item["id"] == "node-j")
-        self.assertEqual(node_k["egress"]["registration"], ["94.136.188.175"])
+        self.assertEqual(node_k["egress"]["registration"], ["94.136.188.175", "13.140.252.220"])
         self.assertEqual(node_j["egress"]["newtool"], ["217.216.58.27", "147.93.168.146"])
 
     def test_parse_upstream_and_status_shape(self):

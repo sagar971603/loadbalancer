@@ -10,10 +10,10 @@ if git -C "$ROOT" ls-files | grep -Eq '(^|/)\.env$|\.(pem|key|log|pdf|htpasswd)$
 fi
 
 grep -qE '^[[:space:]]*ip_hash;' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
-grep -qE 'server[[:space:]]+94[.]136[.]188[.]175:80.*weight=1.*30s;' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
+grep -qE 'server[[:space:]]+94[.]136[.]188[.]175:80.*weight=2.*30s;' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
 grep -qE 'server[[:space:]]+217[.]216[.]58[.]27:80.*weight=2.*30s;' "$ROOT/backup/load-balancer/nginx/sites-available/automation_v2"
 grep -qE '^[[:space:]]*ip_hash;' "$ROOT/backup/load-balancer/nginx/sites-available/regpan4.fskindia.com"
-grep -qE 'server[[:space:]]+94[.]136[.]188[.]175:8002.*weight=1;' "$ROOT/backup/load-balancer/nginx/sites-available/regpan4.fskindia.com"
+grep -qE 'server[[:space:]]+94[.]136[.]188[.]175:8002.*weight=2;' "$ROOT/backup/load-balancer/nginx/sites-available/regpan4.fskindia.com"
 grep -qE 'server[[:space:]]+217[.]216[.]58[.]27:8002.*weight=2;' "$ROOT/backup/load-balancer/nginx/sites-available/regpan4.fskindia.com"
 grep -q '127.0.0.1:8009' "$ROOT/backup/backend/nginx/automation-v2"
 grep -q '127.0.0.1:8010' "$ROOT/backup/backend/nginx/registration"

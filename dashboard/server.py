@@ -41,8 +41,7 @@ MACHINES = [
     {
         "id": "node-k", "label": "Backend K",
         "routes": {"newtool": "94.136.188.175", "registration": "94.136.188.175"},
-        "egress": {"newtool": ["94.136.188.175"], "registration": ["94.136.188.175"]},
-        "notes": {"13.140.252.220": "Contabo gateway unreachable; additional IP inactive."},
+        "egress": {"newtool": ["94.136.188.175", "13.140.252.220"], "registration": ["94.136.188.175", "13.140.252.220"]},
     },
 ]
 
