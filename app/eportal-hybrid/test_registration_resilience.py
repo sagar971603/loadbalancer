@@ -1,7 +1,9 @@
 import threading
 import unittest
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
+import requests
 
 import regmainhybrid as api
 from registration_core import ePortalRegistrationApi
@@ -35,17 +37,30 @@ class FakeService:
 
 
 class FakePage:
-    def __init__(self):
+    def __init__(self, outcomes=()):
         self.calls = []
+        self.outcomes = iter(outcomes)
+        self.listener = None
+
+    def on(self, _event, listener):
+        self.listener = listener
+
+    def remove_listener(self, _event, _listener):
+        self.listener = None
 
     def evaluate(self, script, arguments):
         self.calls.append((script, arguments))
-        return {
+        result, failure = next(self.outcomes, ({
             "status": 200,
             "headers": [["content-type", "application/json"]],
             "text": '{"ok":true}',
-            "attempts": 2,
-        }
+        }, None))
+        if failure:
+            self.listener(SimpleNamespace(
+                url=arguments["url"], method="POST", post_data=arguments["payload"],
+                failure=failure, redirected_from=None,
+            ))
+        return result
 
 
 class FakePortalResponse:
@@ -103,19 +118,36 @@ class RegistrationResilienceTest(unittest.TestCase):
         self.assertNotIn("rg_test_session", api.registration_sessions)
 
     def test_browser_transport_uses_bounded_backoff(self):
-        page = FakePage()
+        page = FakePage([({"failed": "before_headers"}, "NS_ERROR_CONNECTION_REFUSED")])
         context = type("Context", (), {"cookies": lambda _self: []})()
         browser = type("Browser", (), {"page": page, "context": context, "proxy_server": None})()
         service = ePortalRegistrationApi({}, {}, [], browser)
 
-        with self.assertLogs("registration_core", level="WARNING") as captured:
+        with patch("registration_core.pace_portal_request") as pace, self.assertLogs(
+            "registration_core", level="WARNING"
+        ) as captured:
             result = service._browser_post("https://example.test/api", {"value": 1})
 
         self.assertEqual(result.status_code, 200)
         self.assertEqual(result.json(), {"ok": True})
-        self.assertEqual(len(page.calls), 1)
-        self.assertIn("const retryDelays = [10000]", page.calls[0][0])
-        self.assertIn("Browser fetch recovered on retry", captured.output[0])
+        self.assertEqual(len(page.calls), 2)
+        self.assertEqual(pace.call_count, 2)
+        self.assertIn("Browser fetch recovered on retry", captured.output[-1])
+        self.assertIsNone(page.listener)
+
+    def test_contact_request_is_not_resent_when_outcome_is_uncertain(self):
+        for phase in ("before_headers", "response_body"):
+            with self.subTest(phase=phase):
+                page = FakePage([({"failed": phase}, "NS_ERROR_NET_RESET")])
+                context = SimpleNamespace(cookies=lambda: [])
+                browser = SimpleNamespace(page=page, context=context, proxy_server=None)
+                service = ePortalRegistrationApi({}, {"sn": "indivRegistrationService"}, [], browser)
+                with patch("registration_core.pace_portal_request"), self.assertRaisesRegex(
+                    requests.ConnectionError, "last step could not be confirmed"
+                ):
+                    service._browser_post("https://example.test/api", {"isTrue": False})
+                self.assertEqual(len(page.calls), 1)
+                self.assertIsNone(page.listener)
 
     def test_browser_transport_lock_is_shared_per_proxy(self):
         browser_a = type("Browser", (), {"proxy_server": "http://127.0.0.1:18889"})()
@@ -128,6 +160,19 @@ class RegistrationResilienceTest(unittest.TestCase):
 
         self.assertIs(service_a.portal_request_lock, service_b.portal_request_lock)
         self.assertIsNot(service_a.portal_request_lock, service_c.portal_request_lock)
+
+    def test_browser_worker_retains_request_log_context(self):
+        class Worker(api.PortalServiceWorker):
+            def _bootstrap(self):
+                return api.REQUEST_ID.get()
+
+        worker = Worker({})
+        token = api.REQUEST_ID.set("registration-request-test")
+        try:
+            self.assertEqual(worker.bootstrap(), "registration-request-test")
+        finally:
+            api.REQUEST_ID.reset(token)
+            worker.close()
 
     def test_optional_first_name_is_encoded_as_empty_text(self):
         user = {

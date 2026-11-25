@@ -33,6 +33,13 @@ PROXY_REQUEST_LOCKS = {}
 PROXY_REQUEST_LAST_AT = {}
 PROXY_REQUEST_LOCKS_GUARD = threading.Lock()
 PORTAL_MIN_INTERVAL_SECONDS = float(os.getenv("REG_EGRESS_MIN_INTERVAL_SECONDS", "10"))
+CONNECT_FAILURES = {
+    "NS_ERROR_UNKNOWN_HOST", "NS_ERROR_UNKNOWN_PROXY_HOST",
+    "NS_ERROR_CONNECTION_REFUSED", "NS_ERROR_PROXY_CONNECTION_REFUSED",
+    "net::ERR_NAME_NOT_RESOLVED", "net::ERR_CONNECTION_REFUSED",
+    "net::ERR_PROXY_CONNECTION_FAILED",
+}
+ADDRESS_LOOKUPS = {"district", "state", "locality", "post_office", "country"}
 MONTHS = {
     "JAN": "01", "FEB": "02", "MAR": "03", "APR": "04",
     "MAY": "05", "JUN": "06", "JUL": "07", "AUG": "08",
@@ -268,45 +275,78 @@ class ePortalRegistrationApi:
         }
         payload = json.dumps(json_data, separators=(",", ":"))
 
+        page = self.browser_obj.page
+        proxy = getattr(self.browser_obj, "proxy_server", None)
+        operation = "send_contact_otps" if (
+            headers["sn"] == "indivRegistrationService" and json_data.get("isTrue") is False
+        ) else headers["sn"]
+        failure = None
+
+        def record_failure(request):
+            nonlocal failure
+            if (request.url == url and request.method == "POST"
+                    and request.redirected_from is None and request.post_data == payload):
+                failure = request.failure
+
         with self.portal_request_lock:
-            pace_portal_request(getattr(self.browser_obj, "proxy_server", None))
+            page.on("requestfailed", record_failure)
             try:
-                result = self.browser_obj.page.evaluate(
-                    """
+                for attempt in (1, 2):
+                    failure = None
+                    pace_portal_request(proxy)
+                    result = page.evaluate(
+                        """
 async ({url, payload, headers}) => {
-  let lastError;
-  const retryDelays = [10000];
-  const maxAttempts = retryDelays.length + 1;
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: payload,
-        credentials: 'include'
-      });
-      const text = await res.text();
-      const responseHeaders = [];
-      res.headers.forEach((value, name) => responseHeaders.push([name, value]));
-      return {status: res.status, headers: responseHeaders, text, attempts: attempt + 1};
-    } catch (error) {
-      lastError = error;
-      if (attempt + 1 < maxAttempts) await new Promise(resolve => setTimeout(resolve, retryDelays[attempt]));
-    }
+  let res;
+  try {
+    res = await fetch(url, {method: 'POST', headers, body: payload,
+      credentials: 'include'});
+  } catch {
+    return {failed: 'before_headers'};
   }
-  throw lastError;
+  try {
+    const text = await res.text();
+    if (res.status === 200 && !text.trim()) {
+      return {failed: 'response_body', status: res.status};
+    }
+    return {status: res.status, headers: [...res.headers], text};
+  } catch {
+    return {failed: 'response_body', status: res.status};
+  }
 }
 """,
-                    {"url": url, "payload": payload, "headers": headers},
-                )
+                        {"url": url, "payload": payload, "headers": headers},
+                    )
+                    phase = result.get("failed")
+                    if not phase:
+                        if attempt > 1:
+                            logger.warning("Browser fetch recovered on retry")
+                        break
+                    can_retry = headers["sn"] in ADDRESS_LOOKUPS or (
+                        phase == "before_headers" and failure in CONNECT_FAILURES
+                    )
+                    logger.warning(
+                        "Portal transport failed proxy=%s operation=%s phase=%s status=%s browser_error=%s retry=%s",
+                        proxy or "direct", operation, phase, result.get("status"),
+                        failure if failure and re.fullmatch(r"[A-Za-z0-9_:]{1,80}", failure) else "unknown",
+                        can_retry and attempt == 1,
+                    )
+                    if attempt == 2 or not can_retry:
+                        if can_retry:
+                            raise requests.ConnectionError(
+                                "NetworkError when attempting to fetch resource: Income Tax portal connection failed"
+                            )
+                        raise requests.ConnectionError(
+                            "Income Tax portal response was interrupted. The last step could not be confirmed."
+                        )
             except Exception:
                 if hasattr(self.browser_obj, "record_portal_result"):
                     self.browser_obj.record_portal_result(False)
                 raise
+            finally:
+                page.remove_listener("requestfailed", record_failure)
             if hasattr(self.browser_obj, "record_portal_result"):
                 self.browser_obj.record_portal_result(True)
-        if result.get("attempts", 1) > 1:
-            logger.warning("Browser fetch recovered on retry")
         response = _CurlResponse(result["status"], _HeaderStore(result.get("headers", [])), result.get("text", ""))
         response.raw_output = result.get("text", "")
         self._sync_browser_cookies_to_session()

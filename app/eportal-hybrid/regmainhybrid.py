@@ -8,7 +8,7 @@ import re
 import threading
 import queue
 import uuid
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
 from logging.handlers import RotatingFileHandler
 from time import monotonic
 
@@ -429,18 +429,18 @@ class PortalServiceWorker:
     def _run(self) -> None:
         self._service = None
         while True:
-            method_name, args, kwargs, reply = self._jobs.get()
+            method_name, args, kwargs, reply, context = self._jobs.get()
             try:
                 if method_name == "__close__":
                     self._close_service()
                     reply.put((True, None))
                     return
                 if method_name == "__bootstrap__":
-                    result = self._bootstrap()
+                    result = context.run(self._bootstrap)
                 else:
                     if self._service is None:
                         raise RuntimeError("Registration service is not initialized")
-                    result = getattr(self._service, method_name)(*args, **kwargs)
+                    result = context.run(getattr(self._service, method_name), *args, **kwargs)
                 reply.put((True, result))
             except BaseException as exc:
                 reply.put((False, exc))
@@ -477,7 +477,7 @@ class PortalServiceWorker:
         if self._closed and method_name != "__close__":
             raise RuntimeError("Registration service is closed")
         reply = queue.Queue(maxsize=1)
-        self._jobs.put((method_name, args, kwargs, reply))
+        self._jobs.put((method_name, args, kwargs, reply, copy_context()))
         ok, value = reply.get(timeout=timeout)
         if ok:
             return value

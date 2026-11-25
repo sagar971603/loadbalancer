@@ -11,7 +11,7 @@ Registration browser objects stay in one backend process and cannot move between
 
 The backend's `EGRESS_MAX_ACTIVE=3` setting is the hard per-IP limit. The local proxy pool chooses the least-used outgoing IP and holds that slot until the browser closes.
 
-Portal calls are serialized and paced to one every ten seconds per outgoing IP. If the portal closes a connection before returning any HTTP response, the browser transport makes one retry after ten seconds. HTTP responses and business errors such as invalid PAN or OTP are never retried.
+Portal calls are serialized and paced per outgoing IP, including during retries. The browser can retry once for a confirmed DNS or connection setup failure or a read-only address lookup with an interrupted response. It does not automatically resend an OTP or other state-changing request when the portal may already have accepted it. Transport logs record the request reference, operation, proxy slot, response phase and browser error without including registration data.
 
 Three consecutive transport failures open a circuit for only that outgoing IP. It cools for 30 minutes, then allows one recovery probe; repeated probe failures extend the cooldown to two hours and then six hours. The router also cools the failed backend briefly and allows at most one alternate backend for a safe Step-1 initialization failure. OTP follow-ups remain on their original backend because moving a live browser session would break the portal session.
 
